@@ -31,6 +31,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     private var cefBrowser: OpaquePointer?
     private weak var cefNativeView: NSView?
     private var cefStatusTimer: Timer?
+    private var hasStartedWebKitFallbackLoad = false
     private var pendingInitialURL: URL
 
     init(
@@ -49,7 +50,11 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         super.init(frame: frameRect)
 
         commonInit()
-        load(initialURL)
+        if Self.cefRequested {
+            urlField.stringValue = initialURL.absoluteString
+        } else {
+            load(initialURL)
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -63,6 +68,10 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     }
 
     override var acceptsFirstResponder: Bool { true }
+
+    private static var cefRequested: Bool {
+        ProcessInfo.processInfo.environment["GSDE_ENABLE_CEF"] == "1"
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -214,6 +223,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         if let cefBrowser {
             url.absoluteString.withCString { gsde_chromium_browser_load_url(cefBrowser, $0) }
         } else {
+            hasStartedWebKitFallbackLoad = true
             webView.load(URLRequest(url: url))
         }
     }
@@ -261,7 +271,11 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     }
 
     private func createCEFBrowserIfPossible() {
-        guard cefBrowser == nil, gsde_chromium_cef_available() != 0 else { return }
+        guard cefBrowser == nil else { return }
+        guard gsde_chromium_cef_available() != 0 else {
+            startWebKitFallbackLoadIfNeeded()
+            return
+        }
         browserContainer.layoutSubtreeIfNeeded()
         let width = Int32(max(1, browserContainer.bounds.width))
         let height = Int32(max(1, browserContainer.bounds.height))
@@ -279,6 +293,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
 
         guard let browser else {
             backendStatusLabel.stringValue = String(cString: gsde_chromium_last_error())
+            startWebKitFallbackLoadIfNeeded()
             return
         }
         cefBrowser = browser
@@ -291,6 +306,13 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             guard let self, self.cefBrowser == browser, browserContainer != nil else { return }
             initialURL.absoluteString.withCString { gsde_chromium_browser_load_url(browser, $0) }
         }
+    }
+
+    private func startWebKitFallbackLoadIfNeeded() {
+        guard !hasStartedWebKitFallbackLoad else { return }
+        hasStartedWebKitFallbackLoad = true
+        webView.isHidden = false
+        webView.load(URLRequest(url: pendingInitialURL))
     }
 
     private func attachCEFBrowserViewIfAvailable(_ browser: OpaquePointer) {
