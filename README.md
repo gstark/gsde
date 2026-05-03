@@ -74,4 +74,4 @@ The shim vendors Ghostty's public C header in `Sources/GhosttyShim/include/ghost
 
 ## Current behavior
 
-On launch, the app opens one native macOS window sized to the union of all connected display frames. The content view attempts to create a `libghostty` app and terminal surface using the window's native `NSView` as the macOS platform host.
+On launch, the app opens one native macOS window sized to the union of all connected display frames. The content area is split into three equal-width vertical panes; each pane attempts to create a `libghostty` app and terminal surface using its native `NSView` as the macOS platform host.

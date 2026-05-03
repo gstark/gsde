@@ -204,6 +204,47 @@ final class GhosttyHostView: NSView {
     }
 }
 
+final class ThreePaneGhosttyView: NSView {
+    private let panes = [GhosttyHostView(), GhosttyHostView(), GhosttyHostView()]
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        commonInit()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        commonInit()
+    }
+
+    private func commonInit() {
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.cgColor
+
+        panes.forEach { pane in
+            pane.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(pane)
+        }
+
+        NSLayoutConstraint.activate([
+            panes[0].leadingAnchor.constraint(equalTo: leadingAnchor),
+            panes[0].topAnchor.constraint(equalTo: topAnchor),
+            panes[0].bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            panes[1].leadingAnchor.constraint(equalTo: panes[0].trailingAnchor),
+            panes[1].topAnchor.constraint(equalTo: topAnchor),
+            panes[1].bottomAnchor.constraint(equalTo: bottomAnchor),
+            panes[1].widthAnchor.constraint(equalTo: panes[0].widthAnchor),
+
+            panes[2].leadingAnchor.constraint(equalTo: panes[1].trailingAnchor),
+            panes[2].trailingAnchor.constraint(equalTo: trailingAnchor),
+            panes[2].topAnchor.constraint(equalTo: topAnchor),
+            panes[2].bottomAnchor.constraint(equalTo: bottomAnchor),
+            panes[2].widthAnchor.constraint(equalTo: panes[0].widthAnchor)
+        ])
+    }
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
@@ -213,7 +254,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installMainMenu()
 
         let frame = Self.frameCoveringAllDisplays()
-        let contentView = GhosttyHostView(frame: NSRect(origin: .zero, size: frame.size))
+        let contentView = ThreePaneGhosttyView(frame: NSRect(origin: .zero, size: frame.size))
 
         let window = NSWindow(
             contentRect: frame,
