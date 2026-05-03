@@ -4,19 +4,27 @@ CONFIG := release
 BUNDLE_DIR := build/$(APP_NAME).app
 CONTENTS_DIR := $(BUNDLE_DIR)/Contents
 MACOS_DIR := $(CONTENTS_DIR)/MacOS
+FRAMEWORKS_DIR := $(CONTENTS_DIR)/Frameworks
 BINARY := .build/$(CONFIG)/$(SWIFT_PRODUCT)
+BUILT_LIBGHOSTTY := build/libghostty/libghostty.dylib
 
-.PHONY: build app run run-foreground clean
+.PHONY: build libghostty app app-with-ghostty run run-foreground clean
 
 build:
 	swift build -c $(CONFIG)
 
+libghostty:
+	./scripts/build-libghostty.sh
+
 app: build
 	rm -rf $(BUNDLE_DIR)
-	mkdir -p $(MACOS_DIR)
+	mkdir -p $(MACOS_DIR) $(FRAMEWORKS_DIR)
 	cp $(BINARY) $(MACOS_DIR)/$(APP_NAME)
 	cp Info.plist $(CONTENTS_DIR)/Info.plist
+	if [ -n "$$LIBGHOSTTY_PATH" ]; then cp "$$LIBGHOSTTY_PATH" $(FRAMEWORKS_DIR)/libghostty.dylib; elif [ -f "$(BUILT_LIBGHOSTTY)" ]; then cp "$(BUILT_LIBGHOSTTY)" $(FRAMEWORKS_DIR)/libghostty.dylib; fi
 	chmod +x $(MACOS_DIR)/$(APP_NAME)
+
+app-with-ghostty: libghostty app
 
 run: app
 	open $(BUNDLE_DIR)

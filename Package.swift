@@ -11,6 +11,10 @@ let package = Package(
         .executable(name: "GSDEApp", targets: ["GSDEApp"])
     ],
     targets: [
-        .executableTarget(name: "GSDEApp")
+        .executableTarget(
+            name: "GSDEApp",
+            dependencies: ["GhosttyShim"]
+        ),
+        .target(name: "GhosttyShim")
     ]
 )

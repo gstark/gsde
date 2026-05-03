@@ -4,8 +4,16 @@ A personal native macOS app built with Swift and AppKit, without opening Xcode.
 
 ## Build
 
+Build the app shell:
+
 ```sh
 make app
+```
+
+Build Ghostty's embeddable dylib and include it in the app bundle:
+
+```sh
+make app-with-ghostty
 ```
 
 This creates:
@@ -26,6 +34,44 @@ Or run in the foreground from the terminal:
 make run-foreground
 ```
 
+## libghostty hosting
+
+The main window is now a native `NSView` host for Ghostty's embeddable library.
+At runtime the app looks for `libghostty.dylib` in:
+
+1. `LIBGHOSTTY_PATH`
+2. `GSDE.app/Contents/Frameworks/libghostty.dylib`
+3. system library paths such as `/opt/homebrew/lib`
+
+To build and bundle Ghostty automatically:
+
+```sh
+make app-with-ghostty
+```
+
+This clones Ghostty into `external/ghostty`, builds `build/libghostty/libghostty.dylib`, and copies it into `build/GSDE.app/Contents/Frameworks/libghostty.dylib`.
+
+Requirements for building Ghostty:
+
+- Zig 0.15.x. Homebrew install: `brew install zig@0.15`
+- Xcode Metal Toolchain. Install: `xcodebuild -downloadComponent MetalToolchain`
+
+If you already have a locally built `libghostty.dylib`, bundle it while building:
+
+```sh
+LIBGHOSTTY_PATH=/path/to/libghostty.dylib make app
+```
+
+Then run:
+
+```sh
+make run
+```
+
+If the dylib is not present, the window opens with a centered status message explaining where the app looked.
+
+The shim vendors Ghostty's public C header in `Sources/GhosttyShim/include/ghostty.h`; see `THIRD_PARTY_NOTICES.md`.
+
 ## Current behavior
 
-On launch, the app opens one native macOS window sized to the union of all connected display frames and shows `Hello world` centered in the window.
+On launch, the app opens one native macOS window sized to the union of all connected display frames. The content view attempts to create a `libghostty` app and terminal surface using the window's native `NSView` as the macOS platform host.

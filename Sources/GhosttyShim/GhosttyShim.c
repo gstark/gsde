@@ -1,0 +1,217 @@
+#include "GhosttyShim.h"
+#include "ghostty.h"
+
+#include <dlfcn.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+struct ghostty_api {
+    void *handle;
+    int (*init)(uintptr_t, char **);
+    ghostty_config_t (*config_new)(void);
+    void (*config_free)(ghostty_config_t);
+    void (*config_load_default_files)(ghostty_config_t);
+    void (*config_finalize)(ghostty_config_t);
+    ghostty_app_t (*app_new)(const ghostty_runtime_config_s *, ghostty_config_t);
+    void (*app_free)(ghostty_app_t);
+    void (*app_tick)(ghostty_app_t);
+    void (*app_set_focus)(ghostty_app_t, bool);
+    ghostty_surface_config_s (*surface_config_new)(void);
+    ghostty_surface_t (*surface_new)(ghostty_app_t, const ghostty_surface_config_s *);
+    void (*surface_free)(ghostty_surface_t);
+    void (*surface_set_content_scale)(ghostty_surface_t, double, double);
+    void (*surface_set_size)(ghostty_surface_t, uint32_t, uint32_t);
+    void (*surface_set_focus)(ghostty_surface_t, bool);
+    void (*surface_set_occlusion)(ghostty_surface_t, bool);
+    void (*surface_draw)(ghostty_surface_t);
+    void (*surface_text)(ghostty_surface_t, const char *, uintptr_t);
+    bool (*surface_key)(ghostty_surface_t, ghostty_input_key_s);
+};
+
+struct gsde_ghostty_host {
+    ghostty_app_t app;
+    ghostty_config_t config;
+    ghostty_surface_t surface;
+};
+
+static struct ghostty_api api;
+static char status[512] = "libghostty has not been loaded";
+static bool attempted_load = false;
+
+static void wakeup_cb(void *userdata) { (void)userdata; }
+static bool action_cb(ghostty_app_t app, ghostty_target_s target, ghostty_action_s action) { (void)app; (void)target; (void)action; return false; }
+static bool read_clipboard_cb(void *userdata, ghostty_clipboard_e clipboard, void *request) { (void)userdata; (void)clipboard; (void)request; return false; }
+static void confirm_read_clipboard_cb(void *userdata, const char *title, void *request, ghostty_clipboard_request_e type) { (void)userdata; (void)title; (void)request; (void)type; }
+static void write_clipboard_cb(void *userdata, ghostty_clipboard_e clipboard, const ghostty_clipboard_content_s *contents, size_t count, bool confirm) { (void)userdata; (void)clipboard; (void)contents; (void)count; (void)confirm; }
+static void close_surface_cb(void *userdata, bool confirm) { (void)userdata; (void)confirm; }
+
+static void *load_symbol(const char *name) {
+    void *symbol = dlsym(api.handle, name);
+    if (!symbol) snprintf(status, sizeof(status), "libghostty is missing required symbol: %s", name);
+    return symbol;
+}
+
+#define LOAD_SYM(field, symbol_name) do { api.field = load_symbol(symbol_name); if (!api.field) return false; } while (0)
+
+static bool ensure_loaded(void) {
+    if (api.handle) return true;
+    if (attempted_load) return false;
+    attempted_load = true;
+
+    const char *env_path = getenv("LIBGHOSTTY_PATH");
+    if (env_path && env_path[0] != '\0') {
+        api.handle = dlopen(env_path, RTLD_NOW | RTLD_LOCAL);
+    }
+
+    const char *fallback_paths[] = {
+        "@executable_path/../Frameworks/libghostty.dylib",
+        "libghostty.dylib",
+        "/opt/homebrew/lib/libghostty.dylib",
+        "/usr/local/lib/libghostty.dylib",
+        NULL,
+    };
+
+    for (int i = 0; !api.handle && fallback_paths[i] != NULL; i++) {
+        api.handle = dlopen(fallback_paths[i], RTLD_NOW | RTLD_LOCAL);
+    }
+
+    if (!api.handle) {
+        const char *err = dlerror();
+        snprintf(status, sizeof(status), "libghostty.dylib not found. Set LIBGHOSTTY_PATH or place libghostty.dylib in GSDE.app/Contents/Frameworks. Last dlopen error: %s", err ? err : "unknown");
+        return false;
+    }
+
+    LOAD_SYM(init, "ghostty_init");
+    LOAD_SYM(config_new, "ghostty_config_new");
+    LOAD_SYM(config_free, "ghostty_config_free");
+    LOAD_SYM(config_load_default_files, "ghostty_config_load_default_files");
+    LOAD_SYM(config_finalize, "ghostty_config_finalize");
+    LOAD_SYM(app_new, "ghostty_app_new");
+    LOAD_SYM(app_free, "ghostty_app_free");
+    LOAD_SYM(app_tick, "ghostty_app_tick");
+    LOAD_SYM(app_set_focus, "ghostty_app_set_focus");
+    LOAD_SYM(surface_config_new, "ghostty_surface_config_new");
+    LOAD_SYM(surface_new, "ghostty_surface_new");
+    LOAD_SYM(surface_free, "ghostty_surface_free");
+    LOAD_SYM(surface_set_content_scale, "ghostty_surface_set_content_scale");
+    LOAD_SYM(surface_set_size, "ghostty_surface_set_size");
+    LOAD_SYM(surface_set_focus, "ghostty_surface_set_focus");
+    LOAD_SYM(surface_set_occlusion, "ghostty_surface_set_occlusion");
+    LOAD_SYM(surface_draw, "ghostty_surface_draw");
+    LOAD_SYM(surface_text, "ghostty_surface_text");
+    LOAD_SYM(surface_key, "ghostty_surface_key");
+
+    char *argv[] = { (char *)"GSDE", NULL };
+    int init_result = api.init(1, argv);
+    if (init_result != GHOSTTY_SUCCESS) {
+        snprintf(status, sizeof(status), "ghostty_init failed with code %d", init_result);
+        return false;
+    }
+
+    snprintf(status, sizeof(status), "libghostty loaded");
+    return true;
+}
+
+const char *gsde_ghostty_status(void) {
+    ensure_loaded();
+    return status;
+}
+
+gsde_ghostty_host_t *gsde_ghostty_host_create(void *nsview, double scale_factor, uint32_t width_px, uint32_t height_px) {
+    if (!ensure_loaded()) return NULL;
+
+    gsde_ghostty_host_t *host = calloc(1, sizeof(gsde_ghostty_host_t));
+    if (!host) return NULL;
+
+    host->config = api.config_new();
+    if (!host->config) {
+        snprintf(status, sizeof(status), "ghostty_config_new failed");
+        gsde_ghostty_host_destroy(host);
+        return NULL;
+    }
+
+    api.config_load_default_files(host->config);
+    api.config_finalize(host->config);
+
+    ghostty_runtime_config_s runtime = {0};
+    runtime.userdata = host;
+    runtime.supports_selection_clipboard = false;
+    runtime.wakeup_cb = wakeup_cb;
+    runtime.action_cb = action_cb;
+    runtime.read_clipboard_cb = read_clipboard_cb;
+    runtime.confirm_read_clipboard_cb = confirm_read_clipboard_cb;
+    runtime.write_clipboard_cb = write_clipboard_cb;
+    runtime.close_surface_cb = close_surface_cb;
+
+    host->app = api.app_new(&runtime, host->config);
+    if (!host->app) {
+        snprintf(status, sizeof(status), "ghostty_app_new failed");
+        gsde_ghostty_host_destroy(host);
+        return NULL;
+    }
+
+    ghostty_surface_config_s surface_config = api.surface_config_new();
+    surface_config.platform_tag = GHOSTTY_PLATFORM_MACOS;
+    surface_config.platform.macos.nsview = nsview;
+    surface_config.userdata = host;
+    surface_config.scale_factor = scale_factor;
+    surface_config.font_size = 0;
+    surface_config.context = GHOSTTY_SURFACE_CONTEXT_WINDOW;
+
+    host->surface = api.surface_new(host->app, &surface_config);
+    if (!host->surface) {
+        snprintf(status, sizeof(status), "ghostty_surface_new failed");
+        gsde_ghostty_host_destroy(host);
+        return NULL;
+    }
+
+    gsde_ghostty_host_resize(host, scale_factor, width_px, height_px);
+    gsde_ghostty_host_focus(host, true);
+    snprintf(status, sizeof(status), "libghostty surface created");
+    return host;
+}
+
+void gsde_ghostty_host_destroy(gsde_ghostty_host_t *host) {
+    if (!host) return;
+    if (api.surface_free && host->surface) api.surface_free(host->surface);
+    if (api.app_free && host->app) api.app_free(host->app);
+    if (api.config_free && host->config) api.config_free(host->config);
+    free(host);
+}
+
+void gsde_ghostty_host_resize(gsde_ghostty_host_t *host, double scale_factor, uint32_t width_px, uint32_t height_px) {
+    if (!host || !host->surface) return;
+    api.surface_set_content_scale(host->surface, scale_factor, scale_factor);
+    api.surface_set_size(host->surface, width_px, height_px);
+    api.surface_draw(host->surface);
+}
+
+void gsde_ghostty_host_focus(gsde_ghostty_host_t *host, bool focused) {
+    if (!host) return;
+    if (host->app) api.app_set_focus(host->app, focused);
+    if (host->surface) {
+        api.surface_set_focus(host->surface, focused);
+        api.surface_set_occlusion(host->surface, false);
+    }
+}
+
+void gsde_ghostty_host_tick(gsde_ghostty_host_t *host) {
+    if (host && host->app) api.app_tick(host->app);
+}
+
+void gsde_ghostty_host_draw(gsde_ghostty_host_t *host) {
+    if (host && host->surface) api.surface_draw(host->surface);
+}
+
+void gsde_ghostty_host_text(gsde_ghostty_host_t *host, const char *text, uintptr_t len) {
+    if (host && host->surface && text && len > 0) api.surface_text(host->surface, text, len);
+}
+
+bool gsde_ghostty_host_key(gsde_ghostty_host_t *host, ghostty_input_key_s event) {
+    if (!host || !host->surface) return false;
+    return api.surface_key(host->surface, event);
+}
+
+bool gsde_ghostty_host_is_loaded(gsde_ghostty_host_t *host) {
+    return host && host->surface;
+}
