@@ -7,6 +7,7 @@ MACOS_DIR := $(CONTENTS_DIR)/MacOS
 FRAMEWORKS_DIR := $(CONTENTS_DIR)/Frameworks
 BINARY := .build/$(CONFIG)/$(SWIFT_PRODUCT)
 BUILT_LIBGHOSTTY := build/libghostty/libghostty.dylib
+CEF_FRAMEWORK := external/cef/Release/Chromium Embedded Framework.framework
 
 .PHONY: build libghostty cef app app-with-ghostty app-with-chromium run run-foreground clean
 
@@ -25,6 +26,7 @@ app: build
 	cp $(BINARY) $(MACOS_DIR)/$(APP_NAME)
 	cp Info.plist $(CONTENTS_DIR)/Info.plist
 	if [ -n "$$LIBGHOSTTY_PATH" ]; then cp "$$LIBGHOSTTY_PATH" $(FRAMEWORKS_DIR)/libghostty.dylib; elif [ -f "$(BUILT_LIBGHOSTTY)" ]; then cp "$(BUILT_LIBGHOSTTY)" $(FRAMEWORKS_DIR)/libghostty.dylib; fi
+	if [ -d "$(CEF_FRAMEWORK)" ]; then cp -R "$(CEF_FRAMEWORK)" $(FRAMEWORKS_DIR)/; fi
 	chmod +x $(MACOS_DIR)/$(APP_NAME)
 
 app-with-ghostty: libghostty app

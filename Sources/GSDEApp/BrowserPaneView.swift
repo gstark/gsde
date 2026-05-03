@@ -1,4 +1,5 @@
 import AppKit
+import ChromiumStub
 import WebKit
 
 struct BrowserProfileConfig {
@@ -23,6 +24,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     private let forwardButton = NSButton(title: "›", target: nil, action: nil)
     private let reloadButton = NSButton(title: "↻", target: nil, action: nil)
     private let devToolsButton = NSButton(title: "DevTools", target: nil, action: nil)
+    private let backendStatusLabel = NSTextField(labelWithString: "")
     private let urlField = NSTextField(string: "")
     private let webView: WKWebView
 
@@ -109,6 +111,11 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         devToolsButton.target = self
         devToolsButton.action = #selector(showDeveloperTools)
 
+        backendStatusLabel.stringValue = String(cString: gsde_chromium_backend_status())
+        backendStatusLabel.textColor = .secondaryLabelColor
+        backendStatusLabel.font = .systemFont(ofSize: 11)
+        backendStatusLabel.lineBreakMode = .byTruncatingTail
+
         urlField.placeholderString = "Enter URL"
         urlField.target = self
         urlField.action = #selector(navigateFromURLField)
@@ -119,7 +126,10 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         toolbar.addArrangedSubview(reloadButton)
         toolbar.addArrangedSubview(urlField)
         toolbar.addArrangedSubview(devToolsButton)
+        toolbar.addArrangedSubview(backendStatusLabel)
 
+        backendStatusLabel.setContentHuggingPriority(.required, for: .horizontal)
+        backendStatusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         urlField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         urlField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         updateNavigationButtons()

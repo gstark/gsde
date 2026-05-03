@@ -22,6 +22,12 @@ external/cef/include
 external/cef/libcef_dll
 ```
 
+## Current repository support
+
+The app now has a `ChromiumStub` target that the Swift browser pane can call without linking CEF yet. `make app` copies `external/cef/Release/Chromium Embedded Framework.framework` into `GSDE.app/Contents/Frameworks` when CEF has been fetched.
+
+This means packaging can be tested independently while the real Objective-C++ CEF bridge is added.
+
 ## Desired CEF bridge
 
 Swift should not talk to CEF C++ directly. We should add a small Objective-C++/C bridge with this shape:
