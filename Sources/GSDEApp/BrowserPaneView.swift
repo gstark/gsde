@@ -30,6 +30,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     private let webView: WKWebView
     private var cefBrowser: OpaquePointer?
     private weak var cefNativeView: NSView?
+    private var cefStatusTimer: Timer?
     private var pendingInitialURL: URL
 
     init(
@@ -66,6 +67,8 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window == nil {
+            cefStatusTimer?.invalidate()
+            cefStatusTimer = nil
             if let cefBrowser {
                 gsde_chromium_browser_destroy(cefBrowser)
                 self.cefBrowser = nil
@@ -282,6 +285,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         attachCEFBrowserViewIfAvailable(browser)
         webView.isHidden = true
         backendStatusLabel.stringValue = String(cString: gsde_chromium_backend_status())
+        startCEFStatusPolling()
         let initialURL = pendingInitialURL
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self, weak browserContainer] in
             guard let self, self.cefBrowser == browser, browserContainer != nil else { return }
@@ -299,6 +303,33 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         nativeView.frame = browserContainer.bounds
         nativeView.autoresizingMask = [.width, .height]
         cefNativeView = nativeView
+        updateNavigationButtons()
+    }
+
+    private func startCEFStatusPolling() {
+        cefStatusTimer?.invalidate()
+        cefStatusTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            self?.refreshCEFState()
+        }
+        refreshCEFState()
+    }
+
+    private func refreshCEFState() {
+        guard let cefBrowser else { return }
+        let currentURL = String(cString: gsde_chromium_browser_current_url(cefBrowser))
+        if !currentURL.isEmpty, urlField.currentEditor() == nil {
+            urlField.stringValue = currentURL
+        }
+
+        let loading = gsde_chromium_browser_is_loading(cefBrowser) != 0
+        let httpStatus = gsde_chromium_browser_http_status(cefBrowser)
+        if loading {
+            backendStatusLabel.stringValue = "CEF loading…"
+        } else if httpStatus > 0 {
+            backendStatusLabel.stringValue = "CEF HTTP \(httpStatus)"
+        } else {
+            backendStatusLabel.stringValue = String(cString: gsde_chromium_backend_status())
+        }
         updateNavigationButtons()
     }
 

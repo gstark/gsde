@@ -35,7 +35,10 @@ typedef int (*cef_browser_host_create_browser_fn)(const cef_window_info_t *, cef
 typedef cef_browser_t *(*cef_browser_host_create_browser_sync_fn)(const cef_window_info_t *, cef_client_t *, const cef_string_t *, const cef_browser_settings_t *, cef_dictionary_value_t *, cef_request_context_t *);
 typedef cef_request_context_t *(*cef_request_context_create_context_fn)(const cef_request_context_settings_t *, cef_request_context_handler_t *);
 typedef int (*cef_string_utf8_to_utf16_fn)(const char *, size_t, cef_string_utf16_t *);
+typedef int (*cef_string_utf16_to_utf8_fn)(const char16_t *, size_t, cef_string_utf8_t *);
 typedef void (*cef_string_utf16_clear_fn)(cef_string_utf16_t *);
+typedef void (*cef_string_utf8_clear_fn)(cef_string_utf8_t *);
+typedef void (*cef_string_userfree_utf16_free_fn)(cef_string_userfree_utf16_t);
 typedef const char *(*cef_api_hash_fn)(int, int);
 typedef int (*cef_api_version_fn)(void);
 
@@ -47,7 +50,10 @@ static cef_browser_host_create_browser_fn cef_browser_host_create_browser_ptr = 
 static cef_browser_host_create_browser_sync_fn cef_browser_host_create_browser_sync_ptr = NULL;
 static cef_request_context_create_context_fn cef_request_context_create_context_ptr = NULL;
 static cef_string_utf8_to_utf16_fn cef_string_utf8_to_utf16_ptr = NULL;
+static cef_string_utf16_to_utf8_fn cef_string_utf16_to_utf8_ptr = NULL;
 static cef_string_utf16_clear_fn cef_string_utf16_clear_ptr = NULL;
+static cef_string_utf8_clear_fn cef_string_utf8_clear_ptr = NULL;
+static cef_string_userfree_utf16_free_fn cef_string_userfree_utf16_free_ptr = NULL;
 static cef_api_hash_fn cef_api_hash_ptr = NULL;
 static cef_api_version_fn cef_api_version_ptr = NULL;
 #endif
@@ -100,11 +106,14 @@ static bool load_cef_framework(void) {
     cef_browser_host_create_browser_sync_ptr = (cef_browser_host_create_browser_sync_fn)dlsym(cef_handle, "cef_browser_host_create_browser_sync");
     cef_request_context_create_context_ptr = (cef_request_context_create_context_fn)dlsym(cef_handle, "cef_request_context_create_context");
     cef_string_utf8_to_utf16_ptr = (cef_string_utf8_to_utf16_fn)dlsym(cef_handle, "cef_string_utf8_to_utf16");
+    cef_string_utf16_to_utf8_ptr = (cef_string_utf16_to_utf8_fn)dlsym(cef_handle, "cef_string_utf16_to_utf8");
     cef_string_utf16_clear_ptr = (cef_string_utf16_clear_fn)dlsym(cef_handle, "cef_string_utf16_clear");
+    cef_string_utf8_clear_ptr = (cef_string_utf8_clear_fn)dlsym(cef_handle, "cef_string_utf8_clear");
+    cef_string_userfree_utf16_free_ptr = (cef_string_userfree_utf16_free_fn)dlsym(cef_handle, "cef_string_userfree_utf16_free");
     cef_api_hash_ptr = (cef_api_hash_fn)dlsym(cef_handle, "cef_api_hash");
     cef_api_version_ptr = (cef_api_version_fn)dlsym(cef_handle, "cef_api_version");
 
-    if (!cef_execute_process_ptr || !cef_initialize_ptr || !cef_do_message_loop_work_ptr || !cef_shutdown_ptr || !cef_browser_host_create_browser_ptr || !cef_browser_host_create_browser_sync_ptr || !cef_request_context_create_context_ptr || !cef_string_utf8_to_utf16_ptr || !cef_string_utf16_clear_ptr || !cef_api_hash_ptr || !cef_api_version_ptr) {
+    if (!cef_execute_process_ptr || !cef_initialize_ptr || !cef_do_message_loop_work_ptr || !cef_shutdown_ptr || !cef_browser_host_create_browser_ptr || !cef_browser_host_create_browser_sync_ptr || !cef_request_context_create_context_ptr || !cef_string_utf8_to_utf16_ptr || !cef_string_utf16_to_utf8_ptr || !cef_string_utf16_clear_ptr || !cef_string_utf8_clear_ptr || !cef_string_userfree_utf16_free_ptr || !cef_api_hash_ptr || !cef_api_version_ptr) {
         snprintf(status, sizeof(status), "CEF framework loaded, but required C API symbols were missing");
         set_last_error(status);
         return false;
@@ -217,6 +226,9 @@ struct gsde_chromium_browser {
     cef_browser_t *browser;
     cef_window_handle_t view;
     cef_request_context_t *request_context;
+    char current_url[2048];
+    int is_loading;
+    int http_status;
 };
 
 static gsde_chromium_browser_t *browser_from_client(cef_client_t *client) {
@@ -306,25 +318,50 @@ static void CEF_CALLBACK gsde_on_after_created(cef_life_span_handler_t *self, ce
     if (browser->browser && browser->browser->base.add_ref) browser->browser->base.add_ref((cef_base_ref_counted_t *)browser->browser);
 }
 
+static void update_browser_url_from_frame(gsde_chromium_browser_t *browser, cef_frame_t *frame) {
+    if (!browser || !frame || !frame->get_url || !cef_string_utf16_to_utf8_ptr || !cef_string_utf8_clear_ptr || !cef_string_userfree_utf16_free_ptr) return;
+    cef_string_userfree_t cef_url = frame->get_url(frame);
+    if (!cef_url) return;
+
+    cef_string_utf8_t utf8;
+    memset(&utf8, 0, sizeof(utf8));
+    if (cef_url->str && cef_url->length > 0 && cef_string_utf16_to_utf8_ptr(cef_url->str, cef_url->length, &utf8)) {
+        snprintf(browser->current_url, sizeof(browser->current_url), "%.*s", (int)utf8.length, utf8.str ? utf8.str : "");
+        cef_string_utf8_clear_ptr(&utf8);
+    }
+    cef_string_userfree_utf16_free_ptr(cef_url);
+}
+
 static void CEF_CALLBACK gsde_on_loading_state_change(cef_load_handler_t *self, cef_browser_t *cef_browser, int isLoading, int canGoBack, int canGoForward) {
-    (void)self; (void)cef_browser; (void)canGoBack; (void)canGoForward;
+    (void)cef_browser; (void)canGoBack; (void)canGoForward;
+    gsde_chromium_browser_t *browser = browser_from_load_handler(self);
+    browser->is_loading = isLoading ? 1 : 0;
     gsde_log(isLoading ? "CEF load state: loading" : "CEF load state: idle");
 }
 
 static void CEF_CALLBACK gsde_on_load_start(cef_load_handler_t *self, cef_browser_t *cef_browser, cef_frame_t *frame, cef_transition_type_t transition_type) {
-    (void)self; (void)cef_browser; (void)frame; (void)transition_type;
+    (void)cef_browser; (void)transition_type;
+    gsde_chromium_browser_t *browser = browser_from_load_handler(self);
+    browser->http_status = 0;
+    update_browser_url_from_frame(browser, frame);
     gsde_log("CEF load start");
 }
 
 static void CEF_CALLBACK gsde_on_load_end(cef_load_handler_t *self, cef_browser_t *cef_browser, cef_frame_t *frame, int httpStatusCode) {
-    (void)self; (void)cef_browser; (void)frame;
+    (void)cef_browser;
+    gsde_chromium_browser_t *browser = browser_from_load_handler(self);
+    browser->http_status = httpStatusCode;
+    update_browser_url_from_frame(browser, frame);
     char message[128];
     snprintf(message, sizeof(message), "CEF load end: HTTP %d", httpStatusCode);
     gsde_log(message);
 }
 
 static void CEF_CALLBACK gsde_on_load_error(cef_load_handler_t *self, cef_browser_t *cef_browser, cef_frame_t *frame, cef_errorcode_t errorCode, const cef_string_t *errorText, const cef_string_t *failedUrl) {
-    (void)self; (void)cef_browser; (void)frame; (void)errorText; (void)failedUrl;
+    (void)cef_browser; (void)errorText; (void)failedUrl;
+    gsde_chromium_browser_t *browser = browser_from_load_handler(self);
+    browser->http_status = (int)errorCode;
+    update_browser_url_from_frame(browser, frame);
     char message[128];
     snprintf(message, sizeof(message), "CEF load error: %d", errorCode);
     gsde_log(message);
@@ -370,6 +407,7 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     gsde_chromium_browser_t *browser = calloc(1, sizeof(gsde_chromium_browser_t));
     if (!browser) return NULL;
     atomic_init(&browser->ref_count, 1);
+    snprintf(browser->current_url, sizeof(browser->current_url), "%s", initial_url ? initial_url : "about:blank");
 
     setup_client_base(&browser->client.base, sizeof(browser->client));
     setup_life_span_base(&browser->life_span_handler.base, sizeof(browser->life_span_handler));
@@ -464,9 +502,22 @@ void gsde_chromium_browser_resize(gsde_chromium_browser_t *browser, int width, i
 #endif
 }
 
+const char *gsde_chromium_browser_current_url(gsde_chromium_browser_t *browser) {
+    return browser ? browser->current_url : "";
+}
+
+int gsde_chromium_browser_is_loading(gsde_chromium_browser_t *browser) {
+    return browser ? browser->is_loading : 0;
+}
+
+int gsde_chromium_browser_http_status(gsde_chromium_browser_t *browser) {
+    return browser ? browser->http_status : 0;
+}
+
 void gsde_chromium_browser_load_url(gsde_chromium_browser_t *browser, const char *url) {
 #if GSDE_HAVE_CEF_HEADERS
     if (!browser || !browser->browser || !url) return;
+    snprintf(browser->current_url, sizeof(browser->current_url), "%s", url);
     cef_frame_t *frame = browser->browser->get_main_frame(browser->browser);
     if (!frame) return;
     cef_string_t cef_url;

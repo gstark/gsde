@@ -19,6 +19,9 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
 void *gsde_chromium_browser_view(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_destroy(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_resize(gsde_chromium_browser_t *browser, int width, int height);
+const char *gsde_chromium_browser_current_url(gsde_chromium_browser_t *browser);
+int gsde_chromium_browser_is_loading(gsde_chromium_browser_t *browser);
+int gsde_chromium_browser_http_status(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_load_url(gsde_chromium_browser_t *browser, const char *url);
 int gsde_chromium_browser_can_go_back(gsde_chromium_browser_t *browser);
 int gsde_chromium_browser_can_go_forward(gsde_chromium_browser_t *browser);
