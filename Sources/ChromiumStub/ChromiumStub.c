@@ -163,7 +163,13 @@ int gsde_chromium_initialize(const char *root_cache_path, const char *cache_path
     if (initialized) return 1;
     if (!load_cef_framework()) return 0;
 
-    cef_main_args_t args = {0};
+    char *argv[] = {
+        "GSDE",
+        "--use-mock-keychain",
+        "--disable-component-update",
+        "--disable-background-networking",
+    };
+    cef_main_args_t args = { .argc = 4, .argv = argv };
     cef_settings_t settings;
     memset(&settings, 0, sizeof(settings));
     settings.size = sizeof(settings);

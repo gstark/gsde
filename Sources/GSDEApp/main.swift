@@ -231,22 +231,19 @@ final class ThreePaneWorkspaceView: NSView {
             addSubview(pane)
         }
 
-        NSLayoutConstraint.activate([
-            panes[0].leadingAnchor.constraint(equalTo: leadingAnchor),
-            panes[0].topAnchor.constraint(equalTo: topAnchor),
-            panes[0].bottomAnchor.constraint(equalTo: bottomAnchor),
-
-            panes[1].leadingAnchor.constraint(equalTo: panes[0].trailingAnchor),
-            panes[1].topAnchor.constraint(equalTo: topAnchor),
-            panes[1].bottomAnchor.constraint(equalTo: bottomAnchor),
-            panes[1].widthAnchor.constraint(equalTo: panes[0].widthAnchor),
-
-            panes[2].leadingAnchor.constraint(equalTo: panes[1].trailingAnchor),
-            panes[2].trailingAnchor.constraint(equalTo: trailingAnchor),
-            panes[2].topAnchor.constraint(equalTo: topAnchor),
-            panes[2].bottomAnchor.constraint(equalTo: bottomAnchor),
-            panes[2].widthAnchor.constraint(equalTo: panes[0].widthAnchor)
-        ])
+        var constraints: [NSLayoutConstraint] = []
+        for (index, pane) in panes.enumerated() {
+            constraints.append(pane.topAnchor.constraint(equalTo: topAnchor))
+            constraints.append(pane.bottomAnchor.constraint(equalTo: bottomAnchor))
+            if index == 0 {
+                constraints.append(pane.leadingAnchor.constraint(equalTo: leadingAnchor))
+            } else {
+                constraints.append(pane.leadingAnchor.constraint(equalTo: panes[index - 1].trailingAnchor))
+                constraints.append(pane.widthAnchor.constraint(equalTo: panes[0].widthAnchor))
+            }
+        }
+        constraints.append(panes[panes.count - 1].trailingAnchor.constraint(equalTo: trailingAnchor))
+        NSLayoutConstraint.activate(constraints)
     }
 }
 
