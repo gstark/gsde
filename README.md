@@ -42,7 +42,20 @@ Fetch the macOS arm64 CEF distribution:
 make cef
 ```
 
-This places CEF under `external/cef`. See `docs/chromium-cef-integration.md` for the bridge and packaging plan. The current browser pane is backend-isolated so it can be swapped from WebKit to CEF while preserving the URL bar/navigation/multi-pane shell.
+This places CEF under `external/cef`. See `docs/chromium-cef-integration.md` for the bridge and packaging plan. The CEF backend is opt-in while it is being hardened:
+
+```sh
+make run-cef
+```
+
+`make app-with-chromium` packages the CEF framework and the required macOS helper app variants (`GSDE Helper`, `GSDE Helper (Renderer)`, `GSDE Helper (GPU)`, etc.) under `GSDE.app/Contents/Frameworks`.
+
+CEF diagnostics are written to:
+
+```text
+/tmp/gsde_chromium.log
+~/Library/Application Support/GSDE/Chromium/chrome_debug.log
+```
 
 ## libghostty hosting
 
@@ -92,4 +105,4 @@ The shim vendors Ghostty's public C header in `Sources/GhosttyShim/include/ghost
 
 On launch, the app opens one native macOS window sized to the union of all connected display frames. The content area is split into three equal-width vertical panes: terminal, browser, terminal.
 
-The browser pane currently provides URL entry, back/forward/reload, standard context menus, persistent website data, and developer tools entry points. By default it uses the WebKit fallback so normal app launch stays stable. The dynamically loaded CEF/Chromium backend is available behind `GSDE_ENABLE_CEF=1` / `make run-cef` while integration continues.
+The browser pane currently provides URL entry, back/forward/reload, standard context menus, persistent website data, and developer tools entry points. By default it uses the WebKit fallback so normal app launch stays stable. The dynamically loaded CEF/Chromium backend is available behind `GSDE_ENABLE_CEF=1` / `make run-cef`; it initializes CEF, creates a native browser view, starts renderer helpers, and loads the initial page.

@@ -24,9 +24,27 @@ external/cef/libcef_dll
 
 ## Current repository support
 
-The app now has a `ChromiumStub` target that dynamically loads CEF at runtime. `make app` copies `external/cef/Release/Chromium Embedded Framework.framework` into `GSDE.app/Contents/Frameworks` when CEF has been fetched, and packages a `GSDE Chromium Helper.app` subprocess bundle.
+The app now has a `ChromiumStub` target that dynamically loads CEF at runtime. `make app` copies `external/cef/Release/Chromium Embedded Framework.framework` into `GSDE.app/Contents/Frameworks` when CEF has been fetched.
 
-The bridge currently exposes CEF initialization, message loop work, helper process execution, browser creation, navigation, resizing, and DevTools entry points. The CEF backend is opt-in via `GSDE_ENABLE_CEF=1` or `make run-cef`; default app launch uses the WebKit fallback while CEF integration stabilizes.
+`make app-with-chromium` also packages the required macOS helper app variants using `scripts/package-cef-helper.sh`:
+
+```text
+GSDE Helper.app
+GSDE Helper (Alerts).app
+GSDE Helper (GPU).app
+GSDE Helper (Plugin).app
+GSDE Helper (Renderer).app
+```
+
+The bridge currently exposes CEF initialization, message loop work, helper process execution, browser creation, native view attachment, navigation, resizing, load diagnostics, and DevTools entry points. The CEF backend is opt-in via `GSDE_ENABLE_CEF=1` or `make run-cef`; default app launch uses the WebKit fallback while CEF integration stabilizes.
+
+Current verified CEF path:
+
+```text
+CEF initialized
+CEF browser created with native view
+CEF load end: HTTP 200
+```
 
 ## Desired CEF bridge
 
@@ -63,7 +81,7 @@ A complete CEF macOS app normally needs more than the framework:
 - `CefInitialize` in the browser process
 - an explicit persistent cache path via `CefSettings.root_cache_path` and/or `CefRequestContextSettings.cache_path`
 
-The current `make cef` target only fetches CEF. The next implementation step is the Objective-C++ bridge and helper packaging.
+`make cef` only fetches CEF. `make app-with-chromium` performs the app-bundle packaging needed for runtime testing.
 
 ## Current browser pane behavior
 

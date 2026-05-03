@@ -32,6 +32,8 @@ for i in "${!suffixes[@]}"; do
   chmod +x "$helper_macos/$helper_name"
   ln -sfn "../../../Chromium Embedded Framework.framework" "$helper_frameworks/Chromium Embedded Framework.framework"
 
+  printf 'APPL????' > "$helper_contents/PkgInfo"
+
   cat > "$helper_contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
