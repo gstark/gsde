@@ -208,7 +208,7 @@ final class GhosttyHostView: NSView {
 final class ThreePaneWorkspaceView: NSView {
     private let panes: [NSView] = [
         GhosttyHostView(),
-        BrowserPaneView(initialURL: URL(string: "https://www.google.com")!),
+        BrowserPaneView(initialURL: URL(string: "https://example.com")!),
         GhosttyHostView()
     ]
 
@@ -304,13 +304,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let rootCachePath = appSupport.appendingPathComponent("GSDE/Chromium", isDirectory: true)
         try? FileManager.default.createDirectory(at: rootCachePath, withIntermediateDirectories: true)
 
-        let helperPath = Bundle.main.bundleURL
-            .appendingPathComponent("Contents/Frameworks/GSDE Chromium Helper.app/Contents/MacOS/GSDE Chromium Helper")
-            .path
-
         let initialized = rootCachePath.path.withCString { rootCache in
             rootCachePath.path.withCString { profileCache in
-                helperPath.withCString { helper in
+                "".withCString { helper in
                     gsde_chromium_initialize(rootCache, profileCache, helper)
                 }
             }

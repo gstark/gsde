@@ -29,6 +29,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     private let browserContainer = NSView()
     private let webView: WKWebView
     private var cefBrowser: OpaquePointer?
+    private weak var cefNativeView: NSView?
     private var pendingInitialURL: URL
 
     init(
@@ -235,7 +236,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         browserContainer.layoutSubtreeIfNeeded()
         let width = Int32(max(1, browserContainer.bounds.width))
         let height = Int32(max(1, browserContainer.bounds.height))
-        let browser = pendingInitialURL.absoluteString.withCString { initialURLPointer in
+        let browser = "about:blank".withCString { initialURLPointer in
             "".withCString { cachePathPointer in
                 gsde_chromium_browser_create(
                     Unmanaged.passUnretained(browserContainer).toOpaque(),
@@ -252,15 +253,33 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             return
         }
         cefBrowser = browser
-        pendingInitialURL.absoluteString.withCString { gsde_chromium_browser_load_url(browser, $0) }
+        attachCEFBrowserViewIfAvailable(browser)
         webView.isHidden = true
         backendStatusLabel.stringValue = String(cString: gsde_chromium_backend_status())
+        let initialURL = pendingInitialURL
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self, weak browserContainer] in
+            guard let self, self.cefBrowser == browser, browserContainer != nil else { return }
+            initialURL.absoluteString.withCString { gsde_chromium_browser_load_url(browser, $0) }
+        }
+    }
+
+    private func attachCEFBrowserViewIfAvailable(_ browser: OpaquePointer) {
+        guard let rawView = gsde_chromium_browser_view(browser) else { return }
+        let nativeView = Unmanaged<NSView>.fromOpaque(rawView).takeUnretainedValue()
+        if nativeView.superview !== browserContainer {
+            nativeView.removeFromSuperview()
+            browserContainer.addSubview(nativeView, positioned: .above, relativeTo: webView)
+        }
+        nativeView.frame = browserContainer.bounds
+        nativeView.autoresizingMask = [.width, .height]
+        cefNativeView = nativeView
     }
 
     private func resizeCEFBrowser() {
         guard let cefBrowser else { return }
         let width = Int32(max(1, browserContainer.bounds.width))
         let height = Int32(max(1, browserContainer.bounds.height))
+        cefNativeView?.frame = browserContainer.bounds
         gsde_chromium_browser_resize(cefBrowser, width, height)
     }
 

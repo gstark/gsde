@@ -16,6 +16,7 @@ void gsde_chromium_do_message_loop_work(void);
 void gsde_chromium_shutdown(void);
 
 gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int width, int height, const char *initial_url, const char *cache_path);
+void *gsde_chromium_browser_view(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_destroy(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_resize(gsde_chromium_browser_t *browser, int width, int height);
 void gsde_chromium_browser_load_url(gsde_chromium_browser_t *browser, const char *url);

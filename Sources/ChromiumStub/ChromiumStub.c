@@ -13,6 +13,7 @@
 #include "include/capi/cef_client_capi.h"
 #include "include/capi/cef_frame_capi.h"
 #include "include/capi/cef_life_span_handler_capi.h"
+#include "include/capi/cef_load_handler_capi.h"
 #include "include/capi/cef_request_context_capi.h"
 #include "include/internal/cef_string.h"
 #else
@@ -211,8 +212,10 @@ void gsde_chromium_shutdown(void) {
 struct gsde_chromium_browser {
     cef_client_t client;
     cef_life_span_handler_t life_span_handler;
+    cef_load_handler_t load_handler;
     atomic_int ref_count;
     cef_browser_t *browser;
+    cef_window_handle_t view;
     cef_request_context_t *request_context;
 };
 
@@ -224,12 +227,20 @@ static gsde_chromium_browser_t *browser_from_life_span(cef_life_span_handler_t *
     return (gsde_chromium_browser_t *)((char *)handler - offsetof(gsde_chromium_browser_t, life_span_handler));
 }
 
+static gsde_chromium_browser_t *browser_from_load_handler(cef_load_handler_t *handler) {
+    return (gsde_chromium_browser_t *)((char *)handler - offsetof(gsde_chromium_browser_t, load_handler));
+}
+
 static gsde_chromium_browser_t *browser_from_client_base(cef_base_ref_counted_t *base) {
     return (gsde_chromium_browser_t *)((char *)base - offsetof(gsde_chromium_browser_t, client));
 }
 
 static gsde_chromium_browser_t *browser_from_life_span_base(cef_base_ref_counted_t *base) {
     return (gsde_chromium_browser_t *)((char *)base - offsetof(gsde_chromium_browser_t, life_span_handler));
+}
+
+static gsde_chromium_browser_t *browser_from_load_base(cef_base_ref_counted_t *base) {
+    return (gsde_chromium_browser_t *)((char *)base - offsetof(gsde_chromium_browser_t, load_handler));
 }
 
 static void CEF_CALLBACK gsde_client_add_ref(cef_base_ref_counted_t *base) {
@@ -264,14 +275,59 @@ static int CEF_CALLBACK gsde_life_span_has_at_least_one_ref(cef_base_ref_counted
     return atomic_load(&browser_from_life_span_base(base)->ref_count) >= 1;
 }
 
+static void CEF_CALLBACK gsde_load_add_ref(cef_base_ref_counted_t *base) {
+    atomic_fetch_add(&browser_from_load_base(base)->ref_count, 1);
+}
+
+static int CEF_CALLBACK gsde_load_release(cef_base_ref_counted_t *base) {
+    return atomic_fetch_sub(&browser_from_load_base(base)->ref_count, 1) == 1;
+}
+
+static int CEF_CALLBACK gsde_load_has_one_ref(cef_base_ref_counted_t *base) {
+    return atomic_load(&browser_from_load_base(base)->ref_count) == 1;
+}
+
+static int CEF_CALLBACK gsde_load_has_at_least_one_ref(cef_base_ref_counted_t *base) {
+    return atomic_load(&browser_from_load_base(base)->ref_count) >= 1;
+}
+
 static cef_life_span_handler_t *CEF_CALLBACK gsde_get_life_span_handler(cef_client_t *client) {
     return &browser_from_client(client)->life_span_handler;
+}
+
+static cef_load_handler_t *CEF_CALLBACK gsde_get_load_handler(cef_client_t *client) {
+    return &browser_from_client(client)->load_handler;
 }
 
 static void CEF_CALLBACK gsde_on_after_created(cef_life_span_handler_t *self, cef_browser_t *cef_browser) {
     gsde_chromium_browser_t *browser = browser_from_life_span(self);
     browser->browser = cef_browser;
+    gsde_log("CEF on_after_created");
     if (browser->browser && browser->browser->base.add_ref) browser->browser->base.add_ref((cef_base_ref_counted_t *)browser->browser);
+}
+
+static void CEF_CALLBACK gsde_on_loading_state_change(cef_load_handler_t *self, cef_browser_t *cef_browser, int isLoading, int canGoBack, int canGoForward) {
+    (void)self; (void)cef_browser; (void)canGoBack; (void)canGoForward;
+    gsde_log(isLoading ? "CEF load state: loading" : "CEF load state: idle");
+}
+
+static void CEF_CALLBACK gsde_on_load_start(cef_load_handler_t *self, cef_browser_t *cef_browser, cef_frame_t *frame, cef_transition_type_t transition_type) {
+    (void)self; (void)cef_browser; (void)frame; (void)transition_type;
+    gsde_log("CEF load start");
+}
+
+static void CEF_CALLBACK gsde_on_load_end(cef_load_handler_t *self, cef_browser_t *cef_browser, cef_frame_t *frame, int httpStatusCode) {
+    (void)self; (void)cef_browser; (void)frame;
+    char message[128];
+    snprintf(message, sizeof(message), "CEF load end: HTTP %d", httpStatusCode);
+    gsde_log(message);
+}
+
+static void CEF_CALLBACK gsde_on_load_error(cef_load_handler_t *self, cef_browser_t *cef_browser, cef_frame_t *frame, cef_errorcode_t errorCode, const cef_string_t *errorText, const cef_string_t *failedUrl) {
+    (void)self; (void)cef_browser; (void)frame; (void)errorText; (void)failedUrl;
+    char message[128];
+    snprintf(message, sizeof(message), "CEF load error: %d", errorCode);
+    gsde_log(message);
 }
 
 static void setup_client_base(cef_base_ref_counted_t *base, size_t size) {
@@ -288,6 +344,14 @@ static void setup_life_span_base(cef_base_ref_counted_t *base, size_t size) {
     base->release = gsde_life_span_release;
     base->has_one_ref = gsde_life_span_has_one_ref;
     base->has_at_least_one_ref = gsde_life_span_has_at_least_one_ref;
+}
+
+static void setup_load_base(cef_base_ref_counted_t *base, size_t size) {
+    base->size = size;
+    base->add_ref = gsde_load_add_ref;
+    base->release = gsde_load_release;
+    base->has_one_ref = gsde_load_has_one_ref;
+    base->has_at_least_one_ref = gsde_load_has_at_least_one_ref;
 }
 
 static void set_cef_string(const char *utf8, cef_string_t *out) {
@@ -309,8 +373,14 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
 
     setup_client_base(&browser->client.base, sizeof(browser->client));
     setup_life_span_base(&browser->life_span_handler.base, sizeof(browser->life_span_handler));
+    setup_load_base(&browser->load_handler.base, sizeof(browser->load_handler));
     browser->client.get_life_span_handler = gsde_get_life_span_handler;
+    browser->client.get_load_handler = gsde_get_load_handler;
     browser->life_span_handler.on_after_created = gsde_on_after_created;
+    browser->load_handler.on_loading_state_change = gsde_on_loading_state_change;
+    browser->load_handler.on_load_start = gsde_on_load_start;
+    browser->load_handler.on_load_end = gsde_on_load_end;
+    browser->load_handler.on_load_error = gsde_on_load_error;
 
     if (cache_path && cache_path[0] != '\0') {
         cef_request_context_settings_t context_settings;
@@ -339,6 +409,7 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     set_cef_string(initial_url ? initial_url : "about:blank", &url);
 
     browser->browser = cef_browser_host_create_browser_sync_ptr(&window_info, &browser->client, &url, &browser_settings, NULL, browser->request_context);
+    browser->view = window_info.view;
     cef_string_utf16_clear_ptr(&url);
 
     if (!browser->browser) {
@@ -346,13 +417,27 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
         gsde_chromium_browser_destroy(browser);
         return NULL;
     }
-    snprintf(status, sizeof(status), "CEF browser created");
+    cef_browser_host_t *created_host = browser->browser->get_host ? browser->browser->get_host(browser->browser) : NULL;
+    if (!browser->view && created_host && created_host->get_window_handle) {
+        browser->view = created_host->get_window_handle(created_host);
+    }
+
+    snprintf(status, sizeof(status), "CEF browser created%s", browser->view ? " with native view" : " without native view");
     snprintf(last_error, sizeof(last_error), "No CEF errors recorded");
     gsde_log(status);
     if (browser->browser->base.add_ref) browser->browser->base.add_ref((cef_base_ref_counted_t *)browser->browser);
     return browser;
 #else
     (void)parent_nsview; (void)width; (void)height; (void)initial_url; (void)cache_path;
+    return NULL;
+#endif
+}
+
+void *gsde_chromium_browser_view(gsde_chromium_browser_t *browser) {
+#if GSDE_HAVE_CEF_HEADERS
+    return browser ? browser->view : NULL;
+#else
+    (void)browser;
     return NULL;
 #endif
 }
