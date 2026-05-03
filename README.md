@@ -78,6 +78,12 @@ Then run:
 make run
 ```
 
+To run the experimental CEF backend instead of the default WebKit browser fallback:
+
+```sh
+make run-cef
+```
+
 If the dylib is not present, the window opens with a centered status message explaining where the app looked.
 
 The shim vendors Ghostty's public C header in `Sources/GhosttyShim/include/ghostty.h`; see `THIRD_PARTY_NOTICES.md`.
@@ -86,4 +92,4 @@ The shim vendors Ghostty's public C header in `Sources/GhosttyShim/include/ghost
 
 On launch, the app opens one native macOS window sized to the union of all connected display frames. The content area is split into three equal-width vertical panes: terminal, browser, terminal.
 
-The browser pane currently provides URL entry, back/forward/reload, standard context menus, persistent website data, and developer tools entry points. It attempts to use the dynamically loaded CEF/Chromium backend when initialization succeeds, and falls back to WebKit otherwise.
+The browser pane currently provides URL entry, back/forward/reload, standard context menus, persistent website data, and developer tools entry points. By default it uses the WebKit fallback so normal app launch stays stable. The dynamically loaded CEF/Chromium backend is available behind `GSDE_ENABLE_CEF=1` / `make run-cef` while integration continues.

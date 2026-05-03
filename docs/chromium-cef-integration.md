@@ -26,7 +26,7 @@ external/cef/libcef_dll
 
 The app now has a `ChromiumStub` target that dynamically loads CEF at runtime. `make app` copies `external/cef/Release/Chromium Embedded Framework.framework` into `GSDE.app/Contents/Frameworks` when CEF has been fetched, and packages a `GSDE Chromium Helper.app` subprocess bundle.
 
-The bridge currently exposes CEF initialization, message loop work, helper process execution, browser creation, navigation, resizing, and DevTools entry points. `BrowserPaneView` will attempt to create a CEF browser when initialization succeeds and falls back to WebKit otherwise.
+The bridge currently exposes CEF initialization, message loop work, helper process execution, browser creation, navigation, resizing, and DevTools entry points. The CEF backend is opt-in via `GSDE_ENABLE_CEF=1` or `make run-cef`; default app launch uses the WebKit fallback while CEF integration stabilizes.
 
 ## Desired CEF bridge
 
