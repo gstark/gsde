@@ -6,6 +6,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef __APPLE__
+#include <crt_externs.h>
+#endif
 
 #if __has_include("include/capi/cef_app_capi.h")
 #define GSDE_HAVE_CEF_HEADERS 1
@@ -48,8 +51,16 @@ static cef_string_utf8_to_utf16_fn cef_string_utf8_to_utf16_ptr = NULL;
 static cef_string_utf16_clear_fn cef_string_utf16_clear_ptr = NULL;
 #endif
 
+static void gsde_log(const char *message) {
+    FILE *file = fopen("/tmp/gsde_chromium.log", "a");
+    if (!file) return;
+    fprintf(file, "%s\n", message ? message : "(null)");
+    fclose(file);
+}
+
 static void set_last_error(const char *message) {
     snprintf(last_error, sizeof(last_error), "%s", message ? message : "unknown CEF error");
+    gsde_log(last_error);
 }
 
 const char *gsde_chromium_last_error(void) {
@@ -140,12 +151,16 @@ int gsde_chromium_initialize(const char *root_cache_path, const char *cache_path
     if (!load_cef_framework()) return 0;
 
     cef_main_args_t args = {0};
+#ifdef __APPLE__
+    args.argc = *_NSGetArgc();
+    args.argv = *_NSGetArgv();
+#endif
     cef_settings_t settings;
     memset(&settings, 0, sizeof(settings));
     settings.size = sizeof(settings);
     settings.no_sandbox = 1;
     settings.external_message_pump = 0;
-    settings.multi_threaded_message_loop = 0;
+    settings.multi_threaded_message_loop = 1;
 
     if (root_cache_path && root_cache_path[0] != '\0') {
         cef_string_utf8_to_utf16_ptr(root_cache_path, strlen(root_cache_path), &settings.root_cache_path);
@@ -157,6 +172,7 @@ int gsde_chromium_initialize(const char *root_cache_path, const char *cache_path
         cef_string_utf8_to_utf16_ptr(browser_subprocess_path, strlen(browser_subprocess_path), &settings.browser_subprocess_path);
     }
 
+    gsde_log("calling cef_initialize");
     int ok = cef_initialize_ptr(&args, &settings, NULL, NULL);
     cef_string_utf16_clear_ptr(&settings.root_cache_path);
     cef_string_utf16_clear_ptr(&settings.cache_path);
@@ -164,6 +180,7 @@ int gsde_chromium_initialize(const char *root_cache_path, const char *cache_path
 
     initialized = ok != 0;
     snprintf(status, sizeof(status), initialized ? "CEF initialized" : "CEF initialization failed; helper app packaging may be incomplete");
+    gsde_log(status);
     if (!initialized) set_last_error(status);
     return initialized ? 1 : 0;
 #else
@@ -281,7 +298,11 @@ static void set_cef_string(const char *utf8, cef_string_t *out) {
 
 gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int width, int height, const char *initial_url, const char *cache_path) {
 #if GSDE_HAVE_CEF_HEADERS
-    if (!initialized || !parent_nsview) return NULL;
+    if (!initialized || !parent_nsview) {
+        set_last_error(!initialized ? "CEF browser create skipped: CEF is not initialized" : "CEF browser create skipped: parent NSView is null");
+        return NULL;
+    }
+    gsde_log("creating CEF browser");
 
     gsde_chromium_browser_t *browser = calloc(1, sizeof(gsde_chromium_browser_t));
     if (!browser) return NULL;
@@ -318,7 +339,7 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     memset(&url, 0, sizeof(url));
     set_cef_string(initial_url ? initial_url : "about:blank", &url);
 
-    browser->browser = cef_browser_host_create_browser_sync_ptr(&window_info, NULL, &url, &browser_settings, NULL, browser->request_context);
+    browser->browser = cef_browser_host_create_browser_sync_ptr(&window_info, &browser->client, &url, &browser_settings, NULL, browser->request_context);
     cef_string_utf16_clear_ptr(&url);
 
     if (!browser->browser) {
@@ -328,6 +349,7 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     }
     snprintf(status, sizeof(status), "CEF browser created");
     snprintf(last_error, sizeof(last_error), "No CEF errors recorded");
+    gsde_log(status);
     if (browser->browser->base.add_ref) browser->browser->base.add_ref((cef_base_ref_counted_t *)browser->browser);
     return browser;
 #else

@@ -13,6 +13,11 @@ TARGET_DIR="$EXTERNAL_DIR/cef"
 
 mkdir -p "$DOWNLOAD_DIR" "$EXTERNAL_DIR"
 
+if [[ -f "$TARGET_DIR/Release/Chromium Embedded Framework.framework/Chromium Embedded Framework" ]]; then
+  echo "CEF is already available at $TARGET_DIR"
+  exit 0
+fi
+
 if [[ ! -f "$DOWNLOAD_DIR/$CEF_ARCHIVE" ]]; then
   echo "Downloading $CEF_URL"
   curl -L --fail --progress-bar "$CEF_URL" -o "$DOWNLOAD_DIR/$CEF_ARCHIVE"

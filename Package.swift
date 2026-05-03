@@ -20,6 +20,7 @@ let package = Package(
         .target(
             name: "ChromiumStub",
             cSettings: [
+                .define("CEF_API_VERSION", to: "14700"),
                 .unsafeFlags(["-I", "external/cef"])
             ]
         ),

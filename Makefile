@@ -44,12 +44,14 @@ run: app
 	open $(BUNDLE_DIR)
 
 run-cef: app-with-chromium
-	GSDE_ENABLE_CEF=1 $(MACOS_DIR)/$(APP_NAME)
+	rm -f "$$HOME/Library/Application Support/GSDE/Chromium/SingletonLock" "$$HOME/Library/Application Support/GSDE/Chromium/SingletonCookie" "$$HOME/Library/Application Support/GSDE/Chromium/SingletonSocket"
+	open -n --env GSDE_ENABLE_CEF=1 $(BUNDLE_DIR)
 
 run-foreground: app
 	$(MACOS_DIR)/$(APP_NAME)
 
 run-cef-foreground: app-with-chromium
+	rm -f "$$HOME/Library/Application Support/GSDE/Chromium/SingletonLock" "$$HOME/Library/Application Support/GSDE/Chromium/SingletonCookie" "$$HOME/Library/Application Support/GSDE/Chromium/SingletonSocket"
 	GSDE_ENABLE_CEF=1 $(MACOS_DIR)/$(APP_NAME)
 
 clean:
