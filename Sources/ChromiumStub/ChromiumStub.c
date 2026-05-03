@@ -6,10 +6,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef __APPLE__
-#include <crt_externs.h>
-#endif
-
 #if __has_include("include/capi/cef_app_capi.h")
 #define GSDE_HAVE_CEF_HEADERS 1
 #include "include/capi/cef_app_capi.h"
@@ -39,6 +35,8 @@ typedef cef_browser_t *(*cef_browser_host_create_browser_sync_fn)(const cef_wind
 typedef cef_request_context_t *(*cef_request_context_create_context_fn)(const cef_request_context_settings_t *, cef_request_context_handler_t *);
 typedef int (*cef_string_utf8_to_utf16_fn)(const char *, size_t, cef_string_utf16_t *);
 typedef void (*cef_string_utf16_clear_fn)(cef_string_utf16_t *);
+typedef const char *(*cef_api_hash_fn)(int, int);
+typedef int (*cef_api_version_fn)(void);
 
 static cef_execute_process_fn cef_execute_process_ptr = NULL;
 static cef_initialize_fn cef_initialize_ptr = NULL;
@@ -49,6 +47,8 @@ static cef_browser_host_create_browser_sync_fn cef_browser_host_create_browser_s
 static cef_request_context_create_context_fn cef_request_context_create_context_ptr = NULL;
 static cef_string_utf8_to_utf16_fn cef_string_utf8_to_utf16_ptr = NULL;
 static cef_string_utf16_clear_fn cef_string_utf16_clear_ptr = NULL;
+static cef_api_hash_fn cef_api_hash_ptr = NULL;
+static cef_api_version_fn cef_api_version_ptr = NULL;
 #endif
 
 static void gsde_log(const char *message) {
@@ -100,14 +100,17 @@ static bool load_cef_framework(void) {
     cef_request_context_create_context_ptr = (cef_request_context_create_context_fn)dlsym(cef_handle, "cef_request_context_create_context");
     cef_string_utf8_to_utf16_ptr = (cef_string_utf8_to_utf16_fn)dlsym(cef_handle, "cef_string_utf8_to_utf16");
     cef_string_utf16_clear_ptr = (cef_string_utf16_clear_fn)dlsym(cef_handle, "cef_string_utf16_clear");
+    cef_api_hash_ptr = (cef_api_hash_fn)dlsym(cef_handle, "cef_api_hash");
+    cef_api_version_ptr = (cef_api_version_fn)dlsym(cef_handle, "cef_api_version");
 
-    if (!cef_execute_process_ptr || !cef_initialize_ptr || !cef_do_message_loop_work_ptr || !cef_shutdown_ptr || !cef_browser_host_create_browser_ptr || !cef_browser_host_create_browser_sync_ptr || !cef_request_context_create_context_ptr || !cef_string_utf8_to_utf16_ptr || !cef_string_utf16_clear_ptr) {
+    if (!cef_execute_process_ptr || !cef_initialize_ptr || !cef_do_message_loop_work_ptr || !cef_shutdown_ptr || !cef_browser_host_create_browser_ptr || !cef_browser_host_create_browser_sync_ptr || !cef_request_context_create_context_ptr || !cef_string_utf8_to_utf16_ptr || !cef_string_utf16_clear_ptr || !cef_api_hash_ptr || !cef_api_version_ptr) {
         snprintf(status, sizeof(status), "CEF framework loaded, but required C API symbols were missing");
         set_last_error(status);
         return false;
     }
 
-    snprintf(status, sizeof(status), "CEF framework loaded; bridge ready to initialize");
+    (void)cef_api_hash_ptr(CEF_API_VERSION, 0);
+    snprintf(status, sizeof(status), "CEF framework loaded; bridge ready to initialize; API version %d", cef_api_version_ptr());
     return true;
 #else
     snprintf(status, sizeof(status), "CEF framework found, but CEF headers were not available at compile time; using WebKit fallback");
@@ -151,16 +154,12 @@ int gsde_chromium_initialize(const char *root_cache_path, const char *cache_path
     if (!load_cef_framework()) return 0;
 
     cef_main_args_t args = {0};
-#ifdef __APPLE__
-    args.argc = *_NSGetArgc();
-    args.argv = *_NSGetArgv();
-#endif
     cef_settings_t settings;
     memset(&settings, 0, sizeof(settings));
     settings.size = sizeof(settings);
     settings.no_sandbox = 1;
     settings.external_message_pump = 0;
-    settings.multi_threaded_message_loop = 1;
+    settings.multi_threaded_message_loop = 0;
 
     if (root_cache_path && root_cache_path[0] != '\0') {
         cef_string_utf8_to_utf16_ptr(root_cache_path, strlen(root_cache_path), &settings.root_cache_path);

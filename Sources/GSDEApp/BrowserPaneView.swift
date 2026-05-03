@@ -252,6 +252,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             return
         }
         cefBrowser = browser
+        pendingInitialURL.absoluteString.withCString { gsde_chromium_browser_load_url(browser, $0) }
         webView.isHidden = true
         backendStatusLabel.stringValue = String(cString: gsde_chromium_backend_status())
     }
