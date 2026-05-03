@@ -8,13 +8,16 @@ FRAMEWORKS_DIR := $(CONTENTS_DIR)/Frameworks
 BINARY := .build/$(CONFIG)/$(SWIFT_PRODUCT)
 BUILT_LIBGHOSTTY := build/libghostty/libghostty.dylib
 
-.PHONY: build libghostty app app-with-ghostty run run-foreground clean
+.PHONY: build libghostty cef app app-with-ghostty app-with-chromium run run-foreground clean
 
 build:
 	swift build -c $(CONFIG)
 
 libghostty:
 	./scripts/build-libghostty.sh
+
+cef:
+	./scripts/fetch-cef.sh
 
 app: build
 	rm -rf $(BUNDLE_DIR)
@@ -25,6 +28,8 @@ app: build
 	chmod +x $(MACOS_DIR)/$(APP_NAME)
 
 app-with-ghostty: libghostty app
+
+app-with-chromium: cef app
 
 run: app
 	open $(BUNDLE_DIR)

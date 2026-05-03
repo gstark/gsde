@@ -34,6 +34,16 @@ Or run in the foreground from the terminal:
 make run-foreground
 ```
 
+## Chromium/CEF preparation
+
+Fetch the macOS arm64 CEF distribution:
+
+```sh
+make cef
+```
+
+This places CEF under `external/cef`. See `docs/chromium-cef-integration.md` for the bridge and packaging plan. The current browser pane is backend-isolated so it can be swapped from WebKit to CEF while preserving the URL bar/navigation/multi-pane shell.
+
 ## libghostty hosting
 
 The main window is now a native `NSView` host for Ghostty's embeddable library.
@@ -74,4 +84,6 @@ The shim vendors Ghostty's public C header in `Sources/GhosttyShim/include/ghost
 
 ## Current behavior
 
-On launch, the app opens one native macOS window sized to the union of all connected display frames. The content area is split into three equal-width vertical panes; each pane attempts to create a `libghostty` app and terminal surface using its native `NSView` as the macOS platform host.
+On launch, the app opens one native macOS window sized to the union of all connected display frames. The content area is split into three equal-width vertical panes: terminal, browser, terminal.
+
+The browser pane currently provides URL entry, back/forward/reload, standard context menus, persistent website data, and an inspectable developer-tools-capable web view. It is structured as a replaceable pane backend so multiple browser panes can be created and the implementation can be swapped to CEF/Chromium while preserving the Swift/AppKit shell.

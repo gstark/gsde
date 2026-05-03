@@ -204,8 +204,12 @@ final class GhosttyHostView: NSView {
     }
 }
 
-final class ThreePaneGhosttyView: NSView {
-    private let panes = [GhosttyHostView(), GhosttyHostView(), GhosttyHostView()]
+final class ThreePaneWorkspaceView: NSView {
+    private let panes: [NSView] = [
+        GhosttyHostView(),
+        BrowserPaneView(initialURL: URL(string: "https://www.google.com")!),
+        GhosttyHostView()
+    ]
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -254,7 +258,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installMainMenu()
 
         let frame = Self.frameCoveringAllDisplays()
-        let contentView = ThreePaneGhosttyView(frame: NSRect(origin: .zero, size: frame.size))
+        let contentView = ThreePaneWorkspaceView(frame: NSRect(origin: .zero, size: frame.size))
 
         let window = NSWindow(
             contentRect: frame,
