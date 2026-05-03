@@ -8,6 +8,7 @@ extern "C" {
 typedef struct gsde_chromium_browser gsde_chromium_browser_t;
 
 const char *gsde_chromium_backend_status(void);
+const char *gsde_chromium_last_error(void);
 int gsde_chromium_cef_available(void);
 int gsde_chromium_execute_process(int argc, char **argv);
 int gsde_chromium_initialize(const char *root_cache_path, const char *cache_path, const char *browser_subprocess_path);

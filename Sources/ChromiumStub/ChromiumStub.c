@@ -24,6 +24,7 @@ static void *cef_handle = NULL;
 static bool attempted_load = false;
 static bool initialized = false;
 static char status[512] = "WebKit fallback backend active; CEF has not been initialized";
+static char last_error[512] = "No CEF errors recorded";
 
 #if GSDE_HAVE_CEF_HEADERS
 typedef int (*cef_execute_process_fn)(const cef_main_args_t *, cef_app_t *, void *);
@@ -47,6 +48,14 @@ static cef_string_utf8_to_utf16_fn cef_string_utf8_to_utf16_ptr = NULL;
 static cef_string_utf16_clear_fn cef_string_utf16_clear_ptr = NULL;
 #endif
 
+static void set_last_error(const char *message) {
+    snprintf(last_error, sizeof(last_error), "%s", message ? message : "unknown CEF error");
+}
+
+const char *gsde_chromium_last_error(void) {
+    return last_error;
+}
+
 static bool load_cef_framework(void) {
     if (cef_handle) return true;
     if (attempted_load) return false;
@@ -66,6 +75,7 @@ static bool load_cef_framework(void) {
     if (!cef_handle) {
         const char *err = dlerror();
         snprintf(status, sizeof(status), "CEF framework not found. Run make cef and make app-with-chromium. Last dlopen error: %s", err ? err : "unknown");
+        set_last_error(status);
         return false;
     }
 
@@ -82,6 +92,7 @@ static bool load_cef_framework(void) {
 
     if (!cef_execute_process_ptr || !cef_initialize_ptr || !cef_do_message_loop_work_ptr || !cef_shutdown_ptr || !cef_browser_host_create_browser_ptr || !cef_browser_host_create_browser_sync_ptr || !cef_request_context_create_context_ptr || !cef_string_utf8_to_utf16_ptr || !cef_string_utf16_clear_ptr) {
         snprintf(status, sizeof(status), "CEF framework loaded, but required C API symbols were missing");
+        set_last_error(status);
         return false;
     }
 
@@ -153,6 +164,7 @@ int gsde_chromium_initialize(const char *root_cache_path, const char *cache_path
 
     initialized = ok != 0;
     snprintf(status, sizeof(status), initialized ? "CEF initialized" : "CEF initialization failed; helper app packaging may be incomplete");
+    if (!initialized) set_last_error(status);
     return initialized ? 1 : 0;
 #else
     (void)root_cache_path;
@@ -310,9 +322,12 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     cef_string_utf16_clear_ptr(&url);
 
     if (!browser->browser) {
+        set_last_error("cef_browser_host_create_browser_sync returned NULL");
         gsde_chromium_browser_destroy(browser);
         return NULL;
     }
+    snprintf(status, sizeof(status), "CEF browser created");
+    snprintf(last_error, sizeof(last_error), "No CEF errors recorded");
     if (browser->browser->base.add_ref) browser->browser->base.add_ref((cef_base_ref_counted_t *)browser->browser);
     return browser;
 #else

@@ -247,10 +247,13 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             }
         }
 
-        guard let browser else { return }
+        guard let browser else {
+            backendStatusLabel.stringValue = String(cString: gsde_chromium_last_error())
+            return
+        }
         cefBrowser = browser
         webView.isHidden = true
-        backendStatusLabel.stringValue = "CEF backend active"
+        backendStatusLabel.stringValue = String(cString: gsde_chromium_backend_status())
     }
 
     private func resizeCEFBrowser() {
