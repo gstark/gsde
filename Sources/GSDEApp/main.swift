@@ -1,4 +1,5 @@
 import AppKit
+import ChromiumStub
 import GhosttyShim
 
 final class GhosttyHostView: NSView {
@@ -252,10 +253,12 @@ final class ThreePaneWorkspaceView: NSView {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
+    private var chromiumMessageLoopTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         installMainMenu()
+        initializeChromiumIfAvailable()
 
         let frame = Self.frameCoveringAllDisplays()
         let contentView = ThreePaneWorkspaceView(frame: NSRect(origin: .zero, size: frame.size))
@@ -279,6 +282,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        chromiumMessageLoopTimer?.invalidate()
+        chromiumMessageLoopTimer = nil
+        gsde_chromium_shutdown()
+    }
+
+    private func initializeChromiumIfAvailable() {
+        // Keep CEF opt-in while the native Chromium bridge is still under active
+        // integration. The browser pane remains usable via WebKit fallback.
+        guard ProcessInfo.processInfo.environment["GSDE_ENABLE_CEF"] == "1" else { return }
+        guard gsde_chromium_cef_available() != 0 else { return }
+
+        let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+
+        let rootCachePath = appSupport.appendingPathComponent("GSDE/Chromium", isDirectory: true)
+        try? FileManager.default.createDirectory(at: rootCachePath, withIntermediateDirectories: true)
+
+        let helperPath = Bundle.main.bundleURL
+            .appendingPathComponent("Contents/Frameworks/GSDE Chromium Helper.app/Contents/MacOS/GSDE Chromium Helper")
+            .path
+
+        let initialized = rootCachePath.path.withCString { rootCache in
+            rootCachePath.path.withCString { profileCache in
+                helperPath.withCString { helper in
+                    gsde_chromium_initialize(rootCache, profileCache, helper)
+                }
+            }
+        }
+
+        guard initialized != 0 else { return }
+
+        chromiumMessageLoopTimer = Timer.scheduledTimer(
+            withTimeInterval: 1.0 / 60.0,
+            repeats: true
+        ) { _ in
+            gsde_chromium_do_message_loop_work()
+        }
     }
 
     private static func frameCoveringAllDisplays() -> NSRect {

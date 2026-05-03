@@ -1,11 +1,15 @@
 APP_NAME := GSDE
 SWIFT_PRODUCT := GSDEApp
+CHROMIUM_HELPER_PRODUCT := GSDEChromiumHelper
 CONFIG := release
 BUNDLE_DIR := build/$(APP_NAME).app
 CONTENTS_DIR := $(BUNDLE_DIR)/Contents
 MACOS_DIR := $(CONTENTS_DIR)/MacOS
 FRAMEWORKS_DIR := $(CONTENTS_DIR)/Frameworks
+CHROMIUM_HELPER_BUNDLE := $(FRAMEWORKS_DIR)/GSDE Chromium Helper.app
+CHROMIUM_HELPER_MACOS_DIR := $(CHROMIUM_HELPER_BUNDLE)/Contents/MacOS
 BINARY := .build/$(CONFIG)/$(SWIFT_PRODUCT)
+CHROMIUM_HELPER_BINARY := .build/$(CONFIG)/$(CHROMIUM_HELPER_PRODUCT)
 BUILT_LIBGHOSTTY := build/libghostty/libghostty.dylib
 CEF_FRAMEWORK := external/cef/Release/Chromium Embedded Framework.framework
 
@@ -27,7 +31,9 @@ app: build
 	cp Info.plist $(CONTENTS_DIR)/Info.plist
 	if [ -n "$$LIBGHOSTTY_PATH" ]; then cp "$$LIBGHOSTTY_PATH" $(FRAMEWORKS_DIR)/libghostty.dylib; elif [ -f "$(BUILT_LIBGHOSTTY)" ]; then cp "$(BUILT_LIBGHOSTTY)" $(FRAMEWORKS_DIR)/libghostty.dylib; fi
 	if [ -d "$(CEF_FRAMEWORK)" ]; then cp -R "$(CEF_FRAMEWORK)" $(FRAMEWORKS_DIR)/; fi
+	if [ -f "$(CHROMIUM_HELPER_BINARY)" ]; then mkdir -p "$(CHROMIUM_HELPER_MACOS_DIR)" && cp "$(CHROMIUM_HELPER_BINARY)" "$(CHROMIUM_HELPER_MACOS_DIR)/GSDE Chromium Helper" && cp ChromiumHelper-Info.plist "$(CHROMIUM_HELPER_BUNDLE)/Contents/Info.plist"; fi
 	chmod +x $(MACOS_DIR)/$(APP_NAME)
+	if [ -f "$(CHROMIUM_HELPER_MACOS_DIR)/GSDE Chromium Helper" ]; then chmod +x "$(CHROMIUM_HELPER_MACOS_DIR)/GSDE Chromium Helper"; fi
 
 app-with-ghostty: libghostty app
 

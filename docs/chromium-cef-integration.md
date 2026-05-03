@@ -24,9 +24,9 @@ external/cef/libcef_dll
 
 ## Current repository support
 
-The app now has a `ChromiumStub` target that the Swift browser pane can call without linking CEF yet. `make app` copies `external/cef/Release/Chromium Embedded Framework.framework` into `GSDE.app/Contents/Frameworks` when CEF has been fetched.
+The app now has a `ChromiumStub` target that dynamically loads CEF at runtime. `make app` copies `external/cef/Release/Chromium Embedded Framework.framework` into `GSDE.app/Contents/Frameworks` when CEF has been fetched, and packages a `GSDE Chromium Helper.app` subprocess bundle.
 
-This means packaging can be tested independently while the real Objective-C++ CEF bridge is added.
+The bridge currently exposes CEF initialization, message loop work, helper process execution, browser creation, navigation, resizing, and DevTools entry points. `BrowserPaneView` will attempt to create a CEF browser when initialization succeeds and falls back to WebKit otherwise.
 
 ## Desired CEF bridge
 

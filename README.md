@@ -86,4 +86,4 @@ The shim vendors Ghostty's public C header in `Sources/GhosttyShim/include/ghost
 
 On launch, the app opens one native macOS window sized to the union of all connected display frames. The content area is split into three equal-width vertical panes: terminal, browser, terminal.
 
-The browser pane currently provides URL entry, back/forward/reload, standard context menus, persistent website data, and an inspectable developer-tools-capable web view. It is structured as a replaceable pane backend so multiple browser panes can be created and the implementation can be swapped to CEF/Chromium while preserving the Swift/AppKit shell.
+The browser pane currently provides URL entry, back/forward/reload, standard context menus, persistent website data, and developer tools entry points. It attempts to use the dynamically loaded CEF/Chromium backend when initialization succeeds, and falls back to WebKit otherwise.

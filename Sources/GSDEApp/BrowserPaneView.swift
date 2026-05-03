@@ -12,7 +12,7 @@ struct BrowserProfileConfig {
         storageDirectory: FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
-        ).first?.appendingPathComponent("GSDE/BrowserProfiles/default", isDirectory: true),
+        ).first?.appendingPathComponent("GSDE/Chromium/Profiles/default", isDirectory: true),
         persistent: true
     )
 }
@@ -26,7 +26,10 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     private let devToolsButton = NSButton(title: "DevTools", target: nil, action: nil)
     private let backendStatusLabel = NSTextField(labelWithString: "")
     private let urlField = NSTextField(string: "")
+    private let browserContainer = NSView()
     private let webView: WKWebView
+    private var cefBrowser: OpaquePointer?
+    private var pendingInitialURL: URL
 
     init(
         frame frameRect: NSRect = .zero,
@@ -34,6 +37,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         initialURL: URL = URL(string: "https://www.google.com")!
     ) {
         self.profile = profile
+        self.pendingInitialURL = initialURL
 
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = profile.persistent ? .default() : .nonPersistent()
@@ -48,6 +52,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
 
     required init?(coder: NSCoder) {
         self.profile = .default
+        self.pendingInitialURL = URL(string: "https://www.google.com")!
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
         self.webView = WKWebView(frame: .zero, configuration: configuration)
@@ -59,9 +64,23 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if window?.firstResponder == nil {
-            window?.makeFirstResponder(webView)
+        if window == nil {
+            if let cefBrowser {
+                gsde_chromium_browser_destroy(cefBrowser)
+                self.cefBrowser = nil
+            }
+            return
         }
+
+        createCEFBrowserIfPossible()
+        if window?.firstResponder == nil {
+            window?.makeFirstResponder(cefBrowser == nil ? webView : browserContainer)
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        resizeCEFBrowser()
     }
 
     private func commonInit() {
@@ -73,9 +92,11 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         configureProfileStorageDirectory()
 
         addSubview(toolbar)
-        addSubview(webView)
+        addSubview(browserContainer)
+        browserContainer.addSubview(webView)
 
         toolbar.translatesAutoresizingMaskIntoConstraints = false
+        browserContainer.translatesAutoresizingMaskIntoConstraints = false
         webView.translatesAutoresizingMaskIntoConstraints = false
 
         NSLayoutConstraint.activate([
@@ -84,10 +105,15 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             toolbar.topAnchor.constraint(equalTo: topAnchor, constant: 6),
             toolbar.heightAnchor.constraint(equalToConstant: 30),
 
-            webView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            webView.topAnchor.constraint(equalTo: toolbar.bottomAnchor, constant: 6),
-            webView.bottomAnchor.constraint(equalTo: bottomAnchor)
+            browserContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
+            browserContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
+            browserContainer.topAnchor.constraint(equalTo: toolbar.bottomAnchor, constant: 6),
+            browserContainer.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            webView.leadingAnchor.constraint(equalTo: browserContainer.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: browserContainer.trailingAnchor),
+            webView.topAnchor.constraint(equalTo: browserContainer.topAnchor),
+            webView.bottomAnchor.constraint(equalTo: browserContainer.bottomAnchor)
         ])
     }
 
@@ -156,8 +182,13 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     }
 
     func load(_ url: URL) {
+        pendingInitialURL = url
         urlField.stringValue = url.absoluteString
-        webView.load(URLRequest(url: url))
+        if let cefBrowser {
+            url.absoluteString.withCString { gsde_chromium_browser_load_url(cefBrowser, $0) }
+        } else {
+            webView.load(URLRequest(url: url))
+        }
     }
 
     @objc private func navigateFromURLField() {
@@ -166,26 +197,67 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     }
 
     @objc private func goBack() {
-        if webView.canGoBack { webView.goBack() }
+        if let cefBrowser {
+            gsde_chromium_browser_go_back(cefBrowser)
+        } else if webView.canGoBack {
+            webView.goBack()
+        }
     }
 
     @objc private func goForward() {
-        if webView.canGoForward { webView.goForward() }
+        if let cefBrowser {
+            gsde_chromium_browser_go_forward(cefBrowser)
+        } else if webView.canGoForward {
+            webView.goForward()
+        }
     }
 
     @objc private func reload() {
-        webView.reload()
+        if let cefBrowser {
+            gsde_chromium_browser_reload(cefBrowser)
+        } else {
+            webView.reload()
+        }
     }
 
     @objc private func showDeveloperTools() {
-        // Public WKWebView API exposes inspectability but not a direct "open inspector" call.
-        // This intentionally leaves the button wired for the CEF backend where ShowDevTools
-        // is a first-class API.
-        if webView.responds(to: Selector(("_showInspector"))) {
+        if let cefBrowser {
+            gsde_chromium_browser_show_devtools(cefBrowser)
+        } else if webView.responds(to: Selector(("_showInspector"))) {
             webView.perform(Selector(("_showInspector")))
         } else {
             NSSound.beep()
         }
+    }
+
+    private func createCEFBrowserIfPossible() {
+        guard cefBrowser == nil, gsde_chromium_cef_available() != 0 else { return }
+        browserContainer.layoutSubtreeIfNeeded()
+        let width = Int32(max(1, browserContainer.bounds.width))
+        let height = Int32(max(1, browserContainer.bounds.height))
+        let browser = pendingInitialURL.absoluteString.withCString { initialURLPointer in
+            "".withCString { cachePathPointer in
+                gsde_chromium_browser_create(
+                    Unmanaged.passUnretained(browserContainer).toOpaque(),
+                    width,
+                    height,
+                    initialURLPointer,
+                    cachePathPointer
+                )
+            }
+        }
+
+        guard let browser else { return }
+        cefBrowser = browser
+        webView.isHidden = true
+        backendStatusLabel.stringValue = "CEF backend active"
+    }
+
+    private func resizeCEFBrowser() {
+        guard let cefBrowser else { return }
+        let width = Int32(max(1, browserContainer.bounds.width))
+        let height = Int32(max(1, browserContainer.bounds.height))
+        gsde_chromium_browser_resize(cefBrowser, width, height)
     }
 
     private func normalizedURL(from rawValue: String) -> URL? {
