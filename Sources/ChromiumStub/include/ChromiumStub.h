@@ -20,9 +20,12 @@ void *gsde_chromium_browser_view(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_destroy(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_resize(gsde_chromium_browser_t *browser, int width, int height);
 void gsde_chromium_browser_load_url(gsde_chromium_browser_t *browser, const char *url);
+int gsde_chromium_browser_can_go_back(gsde_chromium_browser_t *browser);
+int gsde_chromium_browser_can_go_forward(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_go_back(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_go_forward(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_reload(gsde_chromium_browser_t *browser);
+void gsde_chromium_browser_focus(gsde_chromium_browser_t *browser, int focused);
 void gsde_chromium_browser_show_devtools(gsde_chromium_browser_t *browser);
 
 #ifdef __cplusplus

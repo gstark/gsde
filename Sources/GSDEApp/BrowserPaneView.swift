@@ -84,6 +84,29 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         resizeCEFBrowser()
     }
 
+    override func becomeFirstResponder() -> Bool {
+        if let cefBrowser {
+            gsde_chromium_browser_focus(cefBrowser, 1)
+            return true
+        }
+        return super.becomeFirstResponder()
+    }
+
+    override func resignFirstResponder() -> Bool {
+        if let cefBrowser {
+            gsde_chromium_browser_focus(cefBrowser, 0)
+        }
+        return super.resignFirstResponder()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        if let cefBrowser {
+            gsde_chromium_browser_focus(cefBrowser, 1)
+        }
+        super.mouseDown(with: event)
+    }
+
     private func commonInit() {
         wantsLayer = true
         layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
@@ -200,6 +223,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     @objc private func goBack() {
         if let cefBrowser {
             gsde_chromium_browser_go_back(cefBrowser)
+            updateNavigationButtons()
         } else if webView.canGoBack {
             webView.goBack()
         }
@@ -208,6 +232,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     @objc private func goForward() {
         if let cefBrowser {
             gsde_chromium_browser_go_forward(cefBrowser)
+            updateNavigationButtons()
         } else if webView.canGoForward {
             webView.goForward()
         }
@@ -216,6 +241,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     @objc private func reload() {
         if let cefBrowser {
             gsde_chromium_browser_reload(cefBrowser)
+            updateNavigationButtons()
         } else {
             webView.reload()
         }
@@ -273,6 +299,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         nativeView.frame = browserContainer.bounds
         nativeView.autoresizingMask = [.width, .height]
         cefNativeView = nativeView
+        updateNavigationButtons()
     }
 
     private func resizeCEFBrowser() {
@@ -319,7 +346,12 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     }
 
     private func updateNavigationButtons() {
-        backButton.isEnabled = webView.canGoBack
-        forwardButton.isEnabled = webView.canGoForward
+        if let cefBrowser {
+            backButton.isEnabled = gsde_chromium_browser_can_go_back(cefBrowser) != 0
+            forwardButton.isEnabled = gsde_chromium_browser_can_go_forward(cefBrowser) != 0
+        } else {
+            backButton.isEnabled = webView.canGoBack
+            forwardButton.isEnabled = webView.canGoForward
+        }
     }
 }

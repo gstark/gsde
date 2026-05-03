@@ -480,6 +480,24 @@ void gsde_chromium_browser_load_url(gsde_chromium_browser_t *browser, const char
 #endif
 }
 
+int gsde_chromium_browser_can_go_back(gsde_chromium_browser_t *browser) {
+#if GSDE_HAVE_CEF_HEADERS
+    return (browser && browser->browser && browser->browser->can_go_back(browser->browser)) ? 1 : 0;
+#else
+    (void)browser;
+    return 0;
+#endif
+}
+
+int gsde_chromium_browser_can_go_forward(gsde_chromium_browser_t *browser) {
+#if GSDE_HAVE_CEF_HEADERS
+    return (browser && browser->browser && browser->browser->can_go_forward(browser->browser)) ? 1 : 0;
+#else
+    (void)browser;
+    return 0;
+#endif
+}
+
 void gsde_chromium_browser_go_back(gsde_chromium_browser_t *browser) {
 #if GSDE_HAVE_CEF_HEADERS
     if (browser && browser->browser && browser->browser->can_go_back(browser->browser)) browser->browser->go_back(browser->browser);
@@ -501,6 +519,16 @@ void gsde_chromium_browser_reload(gsde_chromium_browser_t *browser) {
     if (browser && browser->browser) browser->browser->reload(browser->browser);
 #else
     (void)browser;
+#endif
+}
+
+void gsde_chromium_browser_focus(gsde_chromium_browser_t *browser, int focused) {
+#if GSDE_HAVE_CEF_HEADERS
+    if (!browser || !browser->browser) return;
+    cef_browser_host_t *host = browser->browser->get_host(browser->browser);
+    if (host && host->set_focus) host->set_focus(host, focused ? 1 : 0);
+#else
+    (void)browser; (void)focused;
 #endif
 }
 
