@@ -483,7 +483,11 @@ void *gsde_chromium_browser_view(gsde_chromium_browser_t *browser) {
 void gsde_chromium_browser_destroy(gsde_chromium_browser_t *browser) {
 #if GSDE_HAVE_CEF_HEADERS
     if (!browser) return;
-    if (browser->browser && browser->browser->base.release) browser->browser->base.release((cef_base_ref_counted_t *)browser->browser);
+    if (browser->browser) {
+        cef_browser_host_t *host = browser->browser->get_host ? browser->browser->get_host(browser->browser) : NULL;
+        if (host && host->close_browser) host->close_browser(host, 1);
+        if (browser->browser->base.release) browser->browser->base.release((cef_base_ref_counted_t *)browser->browser);
+    }
     if (browser->request_context && browser->request_context->base.base.release) browser->request_context->base.base.release((cef_base_ref_counted_t *)browser->request_context);
     free(browser);
 #else
@@ -594,7 +598,11 @@ void gsde_chromium_browser_show_devtools(gsde_chromium_browser_t *browser) {
     cef_browser_settings_t settings;
     memset(&settings, 0, sizeof(settings));
     settings.size = sizeof(settings);
-    host->show_dev_tools(host, &window_info, NULL, &settings, NULL);
+    window_info.bounds.x = 120;
+    window_info.bounds.y = 120;
+    window_info.bounds.width = 1200;
+    window_info.bounds.height = 800;
+    host->show_dev_tools(host, &window_info, &browser->client, &settings, NULL);
 #else
     (void)browser;
 #endif
