@@ -97,6 +97,10 @@ Developer ID signing and notarization helpers are available without opening Xcod
 ```sh
 GSDE_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" make sign-release
 GSDE_NOTARY_PROFILE="notarytool-profile" GSDE_RELEASE_ARCHIVE=dist/GSDE-...zip make notarize-release
+
+# one-command variants:
+GSDE_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" make release-signed
+GSDE_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" GSDE_NOTARY_PROFILE="notarytool-profile" make release-notarized
 ```
 
 `make sign-release` uses `GSDE.entitlements` by default, which enables the hardened-runtime allowances Chromium/CEF commonly needs for JIT, executable memory, and bundled framework loading. Override with `GSDE_ENTITLEMENTS=/path/to/file.entitlements` if needed.

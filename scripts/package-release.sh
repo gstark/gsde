@@ -46,5 +46,6 @@ if [[ ! -f "$ARCHIVE_PATH" ]]; then
   exit 1
 fi
 
+printf '%s\n' "$ARCHIVE_PATH" > "$DIST_DIR/latest-release.txt"
 size_bytes=$(stat -f%z "$ARCHIVE_PATH")
 echo "Release archive created: $ARCHIVE_PATH ($size_bytes bytes)"

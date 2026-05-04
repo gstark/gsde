@@ -15,7 +15,7 @@ CHROMIUM_HELPER_BINARY := .build/$(CONFIG)/$(CHROMIUM_HELPER_PRODUCT)
 BUILT_LIBGHOSTTY := build/libghostty/libghostty.dylib
 CEF_FRAMEWORK := external/cef/Release/Chromium Embedded Framework.framework
 
-.PHONY: build libghostty cef app app-with-ghostty app-with-chromium run run-cef run-cef-two-browsers run-cef-four-browsers run-foreground run-cef-foreground smoke-default smoke-cef smoke-cef-custom-urls smoke-cef-four smoke-cef-graceful smoke-cef-repeat verify-cef-bundle verify-cef verify release release-adhoc sign-release notarize-release reset-state clean
+.PHONY: build libghostty cef app app-with-ghostty app-with-chromium run run-cef run-cef-two-browsers run-cef-four-browsers run-foreground run-cef-foreground smoke-default smoke-cef smoke-cef-custom-urls smoke-cef-four smoke-cef-graceful smoke-cef-repeat verify-cef-bundle verify-cef verify release release-adhoc release-signed release-notarized sign-release notarize-release reset-state clean
 
 build:
 	swift build -c $(CONFIG)
@@ -92,6 +92,13 @@ release: app-with-chromium verify-cef-bundle
 
 release-adhoc: app-with-chromium verify-cef-bundle
 	GSDE_ADHOC_SIGN=1 ./scripts/package-release.sh "$(BUNDLE_DIR)"
+
+release-signed: app-with-chromium verify-cef-bundle
+	./scripts/sign-release.sh "$(BUNDLE_DIR)"
+	./scripts/package-release.sh "$(BUNDLE_DIR)"
+
+release-notarized: release-signed
+	./scripts/notarize-release.sh "$$(cat dist/latest-release.txt)"
 
 sign-release: app-with-chromium verify-cef-bundle
 	./scripts/sign-release.sh "$(BUNDLE_DIR)"
