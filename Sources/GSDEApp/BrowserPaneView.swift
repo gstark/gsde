@@ -192,6 +192,17 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         return cefNativeView.bounds.contains(point)
     }
 
+    private var shouldHandleEditingShortcutInBrowserContent: Bool {
+        guard cefBrowser != nil else { return false }
+        guard let firstResponder = window?.firstResponder else { return true }
+        if firstResponder === urlField || firstResponder === findField { return false }
+        if let editor = firstResponder as? NSTextView,
+           editor === urlField.currentEditor() || editor === findField.currentEditor() {
+            return false
+        }
+        return true
+    }
+
     private func showCEFContextMenu(for event: NSEvent) {
         Self.activePane = self
         window?.makeFirstResponder(self)
@@ -283,6 +294,18 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             zoomOut()
         case ([.command], "0"):
             zoomReset()
+        case ([.command], "x"):
+            guard shouldHandleEditingShortcutInBrowserContent else { return false }
+            cutSelection()
+        case ([.command], "c"):
+            guard shouldHandleEditingShortcutInBrowserContent else { return false }
+            copySelection()
+        case ([.command], "v"):
+            guard shouldHandleEditingShortcutInBrowserContent else { return false }
+            pasteClipboard()
+        case ([.command], "a"):
+            guard shouldHandleEditingShortcutInBrowserContent else { return false }
+            selectAllContent()
         case ([.command], "p"):
             printPage()
         case ([.command, .option], "i"):
@@ -448,6 +471,11 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     @objc func browserReload() { reload() }
     @objc func browserReloadIgnoringCache() { performReload(ignoringCache: true) }
     @objc func browserStopLoading() { stopLoading() }
+    @objc func browserCut() { cutSelection() }
+    @objc func browserCopy() { copySelection() }
+    @objc func browserPaste() { pasteClipboard() }
+    @objc func browserSelectAll() { selectAllContent() }
+    @objc func browserViewSource() { viewSource() }
     @objc func browserShowDeveloperTools() { showDeveloperTools() }
     @objc func browserPrint() { printPage() }
     @objc func browserZoomIn() { zoomIn() }
