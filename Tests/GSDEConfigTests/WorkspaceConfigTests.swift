@@ -56,6 +56,33 @@ struct WorkspaceConfigTests {
         ])
     }
 
+    @Test("discovers project config from GSDE_PROJECT_DIR before home config")
+    func discoversProjectConfig() throws {
+        let home = try temporaryDirectory()
+        let project = try temporaryDirectory()
+
+        let homeConfigDirectory = home.appendingPathComponent(".config/gsde", isDirectory: true)
+        try FileManager.default.createDirectory(at: homeConfigDirectory, withIntermediateDirectories: true)
+        try minimalConfig(startupLayout: "home").write(
+            to: homeConfigDirectory.appendingPathComponent("config.toml"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let projectConfigDirectory = project.appendingPathComponent(".config/gsde", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectConfigDirectory, withIntermediateDirectories: true)
+        let projectConfigURL = projectConfigDirectory.appendingPathComponent("config.toml")
+        try minimalConfig(startupLayout: "project").write(to: projectConfigURL, atomically: true, encoding: .utf8)
+
+        let result = WorkspaceConfigLoader(
+            environment: ["GSDE_PROJECT_DIR": project.path],
+            homeDirectory: home
+        ).load()
+
+        #expect(result.source == .projectDefault(projectConfigURL))
+        #expect(result.config.startupLayout == "project")
+    }
+
     @Test("discovers default config under home .config path")
     func discoversHomeConfig() throws {
         let home = try temporaryDirectory()

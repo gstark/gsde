@@ -28,7 +28,7 @@ cef:
 
 app: build
 	rm -rf $(BUNDLE_DIR)
-	mkdir -p $(MACOS_DIR) $(FRAMEWORKS_DIR)
+	mkdir -p $(MACOS_DIR) $(FRAMEWORKS_DIR) $(CONTENTS_DIR)/Resources/bin
 	cp $(BINARY) $(MACOS_DIR)/$(APP_NAME)
 	cp Info.plist $(CONTENTS_DIR)/Info.plist
 	if [ -f "Resources/GSDEIcon.icns" ]; then cp "Resources/GSDEIcon.icns" $(CONTENTS_DIR)/GSDEIcon.icns; fi
@@ -36,8 +36,9 @@ app: build
 	/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(APP_BUILD)" $(CONTENTS_DIR)/Info.plist
 	if [ -n "$$LIBGHOSTTY_PATH" ]; then cp "$$LIBGHOSTTY_PATH" $(FRAMEWORKS_DIR)/libghostty.dylib; elif [ -f "$(BUILT_LIBGHOSTTY)" ]; then cp "$(BUILT_LIBGHOSTTY)" $(FRAMEWORKS_DIR)/libghostty.dylib; fi
 	if [ -d "$(CEF_FRAMEWORK)" ]; then cp -R "$(CEF_FRAMEWORK)" $(FRAMEWORKS_DIR)/; fi
+	cp scripts/gsde $(CONTENTS_DIR)/Resources/bin/gsde
 	./scripts/package-cef-helper.sh "$(CHROMIUM_HELPER_BINARY)" "$(FRAMEWORKS_DIR)" "$(APP_NAME)" "personal.gsde"
-	chmod +x $(MACOS_DIR)/$(APP_NAME)
+	chmod +x $(MACOS_DIR)/$(APP_NAME) $(CONTENTS_DIR)/Resources/bin/gsde
 
 app-with-ghostty: libghostty app
 

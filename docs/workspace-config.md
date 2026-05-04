@@ -1,6 +1,14 @@
 # Workspace configuration
 
-GSDE workspace configuration is a small TOML file that declares panes and named mosaic layouts. Copy one of the samples in [`docs/sample-configs`](sample-configs), then launch with `GSDE_CONFIG`:
+GSDE workspace configuration is a small TOML file that declares panes and named mosaic layouts. For project-specific configuration, place the file at `.config/gsde/config.toml` in the project directory and launch with the `gsde` command:
+
+```sh
+gsde
+# or from elsewhere:
+gsde /path/to/project
+```
+
+You can also launch with an explicit config path using `GSDE_CONFIG`:
 
 ```sh
 GSDE_CONFIG="$PWD/docs/sample-configs/browser-terminal-dev.toml" make run-cef-foreground
@@ -11,8 +19,9 @@ GSDE_CONFIG="$PWD/docs/sample-configs/browser-terminal-dev.toml" make run-cef-fo
 GSDE loads the first available configuration in this order:
 
 1. `GSDE_CONFIG` when the environment variable is set to a non-empty path. `~` is expanded.
-2. `~/.config/gsde/config.toml` when that file exists.
-3. The built-in default layout.
+2. `$GSDE_PROJECT_DIR/.config/gsde/config.toml` when `GSDE_PROJECT_DIR` is set by the `gsde` command and the file exists.
+3. `~/.config/gsde/config.toml` when that file exists.
+4. The built-in default layout.
 
 If a file is found but invalid, GSDE reports a diagnostic on stderr and uses the built-in default. It does not try later locations because an explicit or discovered config with errors should be fixed, not silently skipped.
 

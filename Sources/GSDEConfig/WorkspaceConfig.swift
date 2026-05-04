@@ -172,12 +172,13 @@ public enum MosaicLayoutFrames {
 
 public enum WorkspaceConfigSource: Equatable, Sendable {
     case environment(URL)
+    case projectDefault(URL)
     case userDefault(URL)
     case builtIn
 
     public var url: URL? {
         switch self {
-        case .environment(let url), .userDefault(let url): return url
+        case .environment(let url), .projectDefault(let url), .userDefault(let url): return url
         case .builtIn: return nil
         }
     }
@@ -236,6 +237,17 @@ public final class WorkspaceConfigLoader {
         if let explicitPath = environment["GSDE_CONFIG"], !explicitPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             let url = URL(fileURLWithPath: (explicitPath as NSString).expandingTildeInPath)
             return loadFile(at: url, source: .environment(url))
+        }
+
+        if let projectPath = environment["GSDE_PROJECT_DIR"], !projectPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let projectURL = URL(fileURLWithPath: (projectPath as NSString).expandingTildeInPath, isDirectory: true)
+            let projectDefaultURL = projectURL
+                .appendingPathComponent(".config", isDirectory: true)
+                .appendingPathComponent("gsde", isDirectory: true)
+                .appendingPathComponent("config.toml")
+            if fileManager.fileExists(atPath: projectDefaultURL.path) {
+                return loadFile(at: projectDefaultURL, source: .projectDefault(projectDefaultURL))
+            }
         }
 
         let defaultURL = homeDirectory

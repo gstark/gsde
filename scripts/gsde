@@ -1,0 +1,59 @@
+#!/bin/sh
+set -eu
+
+usage() {
+  cat <<'USAGE'
+Usage: gsde [project-directory]
+
+Launch GSDE for the current working directory, or for project-directory when
+provided. GSDE will load .config/gsde/config.toml from that project directory
+when the file exists.
+
+Set GSDE_APP_PATH=/path/to/GSDE.app to override app discovery.
+USAGE
+}
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  usage
+  exit 0
+fi
+
+if [ "$#" -gt 1 ]; then
+  usage >&2
+  exit 64
+fi
+
+PROJECT_DIR="${1:-.}"
+if ! PROJECT_DIR=$(cd "$PROJECT_DIR" 2>/dev/null && pwd -P); then
+  echo "gsde: project directory not found: ${1:-.}" >&2
+  exit 66
+fi
+
+SCRIPT_PATH="$0"
+case "$SCRIPT_PATH" in
+  */*) ;;
+  *) SCRIPT_PATH=$(command -v "$SCRIPT_PATH") ;;
+esac
+SCRIPT_DIR=$(cd "$(dirname "$SCRIPT_PATH")" && pwd -P)
+
+APP_PATH="${GSDE_APP_PATH:-}"
+if [ -z "$APP_PATH" ]; then
+  if [ -f "$SCRIPT_DIR/../../Info.plist" ] && [ -d "$SCRIPT_DIR/../../.." ]; then
+    # Bundled install: GSDE.app/Contents/Resources/bin/gsde
+    APP_PATH=$(cd "$SCRIPT_DIR/../../.." && pwd -P)
+  elif [ -d "$SCRIPT_DIR/../build/GSDE.app" ]; then
+    # Source checkout: scripts/gsde
+    APP_PATH=$(cd "$SCRIPT_DIR/../build/GSDE.app" && pwd -P)
+  elif [ -d "$PWD/build/GSDE.app" ]; then
+    APP_PATH=$(cd "$PWD/build/GSDE.app" && pwd -P)
+  elif [ -d "/Applications/GSDE.app" ]; then
+    APP_PATH="/Applications/GSDE.app"
+  fi
+fi
+
+if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+  echo "gsde: could not find GSDE.app. Set GSDE_APP_PATH=/path/to/GSDE.app" >&2
+  exit 69
+fi
+
+exec open -n --env GSDE_PROJECT_DIR="$PROJECT_DIR" "$APP_PATH"
