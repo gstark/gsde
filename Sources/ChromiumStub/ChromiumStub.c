@@ -59,6 +59,7 @@ static cef_string_utf8_clear_fn cef_string_utf8_clear_ptr = NULL;
 static cef_string_userfree_utf16_free_fn cef_string_userfree_utf16_free_ptr = NULL;
 static cef_api_hash_fn cef_api_hash_ptr = NULL;
 static cef_api_version_fn cef_api_version_ptr = NULL;
+static cef_app_t *gsde_cef_app(void);
 #endif
 
 static void gsde_log(const char *message) {
@@ -159,7 +160,7 @@ int gsde_chromium_execute_process(int argc, char **argv) {
 #if GSDE_HAVE_CEF_HEADERS
     if (!load_cef_framework()) return -1;
     cef_main_args_t args = { .argc = argc, .argv = argv };
-    return cef_execute_process_ptr(&args, NULL, NULL);
+    return cef_execute_process_ptr(&args, gsde_cef_app(), NULL);
 #else
     (void)argc;
     (void)argv;
@@ -172,13 +173,8 @@ int gsde_chromium_initialize(const char *root_cache_path, const char *cache_path
     if (initialized) return 1;
     if (!load_cef_framework()) return 0;
 
-    char *argv[] = {
-        "GSDE",
-        "--use-mock-keychain",
-        "--disable-component-update",
-        "--disable-background-networking",
-    };
-    cef_main_args_t args = { .argc = 4, .argv = argv };
+    char *argv[] = { "GSDE" };
+    cef_main_args_t args = { .argc = 1, .argv = argv };
     cef_settings_t settings;
     memset(&settings, 0, sizeof(settings));
     settings.size = sizeof(settings);
@@ -197,7 +193,7 @@ int gsde_chromium_initialize(const char *root_cache_path, const char *cache_path
     }
 
     gsde_log("calling cef_initialize");
-    int ok = cef_initialize_ptr(&args, &settings, NULL, NULL);
+    int ok = cef_initialize_ptr(&args, &settings, gsde_cef_app(), NULL);
     cef_string_utf16_clear_ptr(&settings.root_cache_path);
     cef_string_utf16_clear_ptr(&settings.cache_path);
     cef_string_utf16_clear_ptr(&settings.browser_subprocess_path);
@@ -545,6 +541,61 @@ static void setup_display_base(cef_base_ref_counted_t *base, size_t size) {
 
 static void set_cef_string(const char *utf8, cef_string_t *out) {
     if (utf8 && utf8[0] != '\0') cef_string_utf8_to_utf16_ptr(utf8, strlen(utf8), out);
+}
+
+static cef_app_t global_cef_app;
+static atomic_int global_cef_app_ref_count = 1;
+
+static void CEF_CALLBACK gsde_app_add_ref(cef_base_ref_counted_t *base) {
+    (void)base;
+    atomic_fetch_add(&global_cef_app_ref_count, 1);
+}
+
+static int CEF_CALLBACK gsde_app_release(cef_base_ref_counted_t *base) {
+    (void)base;
+    return atomic_fetch_sub(&global_cef_app_ref_count, 1) == 1;
+}
+
+static int CEF_CALLBACK gsde_app_has_one_ref(cef_base_ref_counted_t *base) {
+    (void)base;
+    return atomic_load(&global_cef_app_ref_count) == 1;
+}
+
+static int CEF_CALLBACK gsde_app_has_at_least_one_ref(cef_base_ref_counted_t *base) {
+    (void)base;
+    return atomic_load(&global_cef_app_ref_count) >= 1;
+}
+
+static void append_switch(cef_command_line_t *command_line, const char *name) {
+    if (!command_line || !command_line->append_switch || !name) return;
+    cef_string_t cef_name;
+    memset(&cef_name, 0, sizeof(cef_name));
+    set_cef_string(name, &cef_name);
+    command_line->append_switch(command_line, &cef_name);
+    cef_string_utf16_clear_ptr(&cef_name);
+}
+
+static void CEF_CALLBACK gsde_on_before_command_line_processing(cef_app_t *self, const cef_string_t *process_type, cef_command_line_t *command_line) {
+    (void)self;
+    if (process_type && process_type->length > 0) return;
+    append_switch(command_line, "use-mock-keychain");
+    append_switch(command_line, "disable-component-update");
+    append_switch(command_line, "disable-background-networking");
+}
+
+static cef_app_t *gsde_cef_app(void) {
+    static bool configured = false;
+    if (!configured) {
+        memset(&global_cef_app, 0, sizeof(global_cef_app));
+        global_cef_app.base.size = sizeof(global_cef_app);
+        global_cef_app.base.add_ref = gsde_app_add_ref;
+        global_cef_app.base.release = gsde_app_release;
+        global_cef_app.base.has_one_ref = gsde_app_has_one_ref;
+        global_cef_app.base.has_at_least_one_ref = gsde_app_has_at_least_one_ref;
+        global_cef_app.on_before_command_line_processing = gsde_on_before_command_line_processing;
+        configured = true;
+    }
+    return &global_cef_app;
 }
 #endif
 
