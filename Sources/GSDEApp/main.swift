@@ -625,6 +625,8 @@ final class VSCodePaneView: NSView {
     private let codeServerManager: CodeServerManager
     private var startTask: Task<Void, Never>?
     private var statusTask: Task<Void, Never>?
+    private var stopTask: Task<Void, Never>?
+    private var stopGeneration = 0
     private var hasStartedSession = false
     private var embeddedView: NSView?
 
@@ -648,7 +650,8 @@ final class VSCodePaneView: NSView {
             startTask = nil
             statusTask = nil
             hasStartedSession = false
-            Task { await codeServerManager.stop(paneID: paneID) }
+            stopGeneration += 1
+            stopTask = Task { await codeServerManager.stop(paneID: paneID) }
             return
         }
         startCodeServerIfNeeded()
@@ -656,8 +659,16 @@ final class VSCodePaneView: NSView {
 
     private func startCodeServerIfNeeded() {
         guard startTask == nil, !hasStartedSession else { return }
+        let pendingStopTask = stopTask
+        let pendingStopGeneration = stopGeneration
         startTask = Task { [weak self, paneID, configSource, codeServerManager] in
             do {
+                await pendingStopTask?.value
+                try Task.checkCancellation()
+                await MainActor.run { [weak self] in
+                    guard let self, stopGeneration == pendingStopGeneration else { return }
+                    stopTask = nil
+                }
                 let session = try await codeServerManager.start(CodeServerStartRequest(paneID: paneID, configSource: configSource))
                 try Task.checkCancellation()
                 let didEmbed = await MainActor.run { [weak self] in
