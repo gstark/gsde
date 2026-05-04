@@ -41,12 +41,15 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Install Ghostty build dependency
+        run: brew install zig@0.15
+
       - name: Build release archive
         env:
           GSDE_VERSION: ${{ steps.version.outputs.version }}
           APP_VERSION: ${{ steps.version.outputs.version }}
           GSDE_ADHOC_SIGN: '1'
-        run: make release-adhoc
+        run: make libghostty release-adhoc
 
       - name: Compute checksum
         id: checksum

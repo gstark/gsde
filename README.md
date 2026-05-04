@@ -95,11 +95,11 @@ make verify-cef          # CEF bundle checks plus all CEF smoke tests
 make verify              # default smoke plus all CEF verification
 ```
 
-Create a distributable zip archive under `dist/`:
+Create a distributable zip archive under `dist/`. Release archives should include libghostty, so build it first:
 
 ```sh
-make release        # unsigned archive
-make release-adhoc  # ad-hoc codesign before archiving
+make libghostty release        # unsigned archive
+make libghostty release-adhoc  # ad-hoc codesign before archiving
 ```
 
 ## Homebrew tap setup
