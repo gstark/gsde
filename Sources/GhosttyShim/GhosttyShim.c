@@ -26,6 +26,9 @@ struct ghostty_api {
     void (*surface_draw)(ghostty_surface_t);
     void (*surface_text)(ghostty_surface_t, const char *, uintptr_t);
     bool (*surface_key)(ghostty_surface_t, ghostty_input_key_s);
+    bool (*surface_mouse_button)(ghostty_surface_t, ghostty_input_mouse_state_e, ghostty_input_mouse_button_e, ghostty_input_mods_e);
+    void (*surface_mouse_pos)(ghostty_surface_t, double, double, ghostty_input_mods_e);
+    void (*surface_mouse_scroll)(ghostty_surface_t, double, double, ghostty_input_scroll_mods_t);
 };
 
 struct gsde_ghostty_host {
@@ -100,6 +103,9 @@ static bool ensure_loaded(void) {
     LOAD_SYM(surface_draw, "ghostty_surface_draw");
     LOAD_SYM(surface_text, "ghostty_surface_text");
     LOAD_SYM(surface_key, "ghostty_surface_key");
+    LOAD_SYM(surface_mouse_button, "ghostty_surface_mouse_button");
+    LOAD_SYM(surface_mouse_pos, "ghostty_surface_mouse_pos");
+    LOAD_SYM(surface_mouse_scroll, "ghostty_surface_mouse_scroll");
 
     char *argv[] = { (char *)"GSDE", NULL };
     int init_result = api.init(1, argv);
@@ -210,6 +216,21 @@ void gsde_ghostty_host_text(gsde_ghostty_host_t *host, const char *text, uintptr
 bool gsde_ghostty_host_key(gsde_ghostty_host_t *host, ghostty_input_key_s event) {
     if (!host || !host->surface) return false;
     return api.surface_key(host->surface, event);
+}
+
+bool gsde_ghostty_host_mouse_button(gsde_ghostty_host_t *host, ghostty_input_mouse_state_e state, ghostty_input_mouse_button_e button, ghostty_input_mods_e mods) {
+    if (!host || !host->surface) return false;
+    return api.surface_mouse_button(host->surface, state, button, mods);
+}
+
+void gsde_ghostty_host_mouse_pos(gsde_ghostty_host_t *host, double x, double y, ghostty_input_mods_e mods) {
+    if (!host || !host->surface) return;
+    api.surface_mouse_pos(host->surface, x, y, mods);
+}
+
+void gsde_ghostty_host_mouse_scroll(gsde_ghostty_host_t *host, double x, double y, ghostty_input_scroll_mods_t mods) {
+    if (!host || !host->surface) return;
+    api.surface_mouse_scroll(host->surface, x, y, mods);
 }
 
 bool gsde_ghostty_host_is_loaded(gsde_ghostty_host_t *host) {

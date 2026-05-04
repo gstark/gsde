@@ -69,7 +69,58 @@ final class GhosttyHostView: NSView {
         markActivePane()
         window?.makeFirstResponder(self)
         gsde_ghostty_host_focus(host, true)
-        super.mouseDown(with: event)
+        sendMousePosition(event)
+        sendMouseButton(event, state: GHOSTTY_MOUSE_PRESS, button: GHOSTTY_MOUSE_LEFT)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        sendMousePosition(event)
+        sendMouseButton(event, state: GHOSTTY_MOUSE_RELEASE, button: GHOSTTY_MOUSE_LEFT)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        markActivePane()
+        window?.makeFirstResponder(self)
+        sendMousePosition(event)
+        sendMouseButton(event, state: GHOSTTY_MOUSE_PRESS, button: GHOSTTY_MOUSE_RIGHT)
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        sendMousePosition(event)
+        sendMouseButton(event, state: GHOSTTY_MOUSE_RELEASE, button: GHOSTTY_MOUSE_RIGHT)
+    }
+
+    override func otherMouseDown(with event: NSEvent) {
+        markActivePane()
+        window?.makeFirstResponder(self)
+        sendMousePosition(event)
+        sendMouseButton(event, state: GHOSTTY_MOUSE_PRESS, button: ghosttyButton(for: event))
+    }
+
+    override func otherMouseUp(with event: NSEvent) {
+        sendMousePosition(event)
+        sendMouseButton(event, state: GHOSTTY_MOUSE_RELEASE, button: ghosttyButton(for: event))
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        sendMousePosition(event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        sendMousePosition(event)
+    }
+
+    override func rightMouseDragged(with event: NSEvent) {
+        sendMousePosition(event)
+    }
+
+    override func otherMouseDragged(with event: NSEvent) {
+        sendMousePosition(event)
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        guard let host else { return }
+        gsde_ghostty_host_mouse_scroll(host, event.scrollingDeltaX, event.scrollingDeltaY, event.modifierFlags.ghosttyScrollMods)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -116,6 +167,32 @@ final class GhosttyHostView: NSView {
         }
 
         _ = sendKey(event, action: action)
+    }
+
+    private func sendMousePosition(_ event: NSEvent) {
+        guard let host else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        let scale = backingScaleFactor
+        gsde_ghostty_host_mouse_pos(
+            host,
+            Double(point.x) * scale,
+            Double(bounds.height - point.y) * scale,
+            event.modifierFlags.ghosttyMods
+        )
+    }
+
+    private func sendMouseButton(_ event: NSEvent, state: ghostty_input_mouse_state_e, button: ghostty_input_mouse_button_e) {
+        guard let host else { return }
+        _ = gsde_ghostty_host_mouse_button(host, state, button, event.modifierFlags.ghosttyMods)
+    }
+
+    private func ghosttyButton(for event: NSEvent) -> ghostty_input_mouse_button_e {
+        switch event.buttonNumber {
+        case 2: return GHOSTTY_MOUSE_MIDDLE
+        case 3: return GHOSTTY_MOUSE_FOUR
+        case 4: return GHOSTTY_MOUSE_FIVE
+        default: return GHOSTTY_MOUSE_UNKNOWN
+        }
     }
 
     private func sendKey(

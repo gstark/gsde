@@ -53,6 +53,10 @@ extension NSEvent {
 }
 
 extension NSEvent.ModifierFlags {
+    var ghosttyScrollMods: ghostty_input_scroll_mods_t {
+        ghostty_input_scroll_mods_t(ghosttyMods.rawValue)
+    }
+
     var ghosttyMods: ghostty_input_mods_e {
         var mods = UInt32(GHOSTTY_MODS_NONE.rawValue)
 

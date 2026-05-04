@@ -21,6 +21,9 @@ void gsde_ghostty_host_tick(gsde_ghostty_host_t *host);
 void gsde_ghostty_host_draw(gsde_ghostty_host_t *host);
 void gsde_ghostty_host_text(gsde_ghostty_host_t *host, const char *text, uintptr_t len);
 bool gsde_ghostty_host_key(gsde_ghostty_host_t *host, ghostty_input_key_s event);
+bool gsde_ghostty_host_mouse_button(gsde_ghostty_host_t *host, ghostty_input_mouse_state_e state, ghostty_input_mouse_button_e button, ghostty_input_mods_e mods);
+void gsde_ghostty_host_mouse_pos(gsde_ghostty_host_t *host, double x, double y, ghostty_input_mods_e mods);
+void gsde_ghostty_host_mouse_scroll(gsde_ghostty_host_t *host, double x, double y, ghostty_input_scroll_mods_t mods);
 bool gsde_ghostty_host_is_loaded(gsde_ghostty_host_t *host);
 
 #ifdef __cplusplus
