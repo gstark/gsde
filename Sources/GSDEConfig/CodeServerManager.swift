@@ -275,6 +275,7 @@ public actor CodeServerManager {
     deinit {
         for running in runningByPaneID.values {
             Self.terminateAndWait(running.handle)
+            Self.releaseReservedLocalhostPort(running.port)
         }
     }
 
@@ -284,7 +285,16 @@ public actor CodeServerManager {
         }
         exitedByPaneID[request.paneID] = nil
 
-        let port = try unusedLocalhostPort()
+        let port = try Self.reserveUnusedLocalhostPort()
+        do {
+            return try await start(request, usingReservedPort: port)
+        } catch {
+            Self.releaseReservedLocalhostPort(port)
+            throw error
+        }
+    }
+
+    private func start(_ request: CodeServerStartRequest, usingReservedPort port: UInt16) async throws -> ManagedCodeServerSession {
         let password = try Self.generatePassword()
         let executableURL = try request.executableURL ?? bundleResolver.executableURL()
         let configuration = try launchBuilder.configuration(
@@ -371,18 +381,23 @@ public actor CodeServerManager {
         exitedByPaneID[paneID] = nil
         guard let running = runningByPaneID.removeValue(forKey: paneID) else { return }
         Self.terminateAndWait(running.handle)
+        Self.releaseReservedLocalhostPort(running.port)
     }
 
     public func stopAll() {
-        let handles = runningByPaneID.values.map(\.handle)
+        let runningProcesses = Array(runningByPaneID.values)
         runningByPaneID.removeAll()
         exitedByPaneID.removeAll()
-        for handle in handles { Self.terminateAndWait(handle) }
+        for running in runningProcesses {
+            Self.terminateAndWait(running.handle)
+            Self.releaseReservedLocalhostPort(running.port)
+        }
     }
 
     private func recordExit(paneID: String, launchID: UUID, exitCode: Int32) {
         guard let running = runningByPaneID[paneID], running.launchID == launchID else { return }
         runningByPaneID[paneID] = nil
+        Self.releaseReservedLocalhostPort(running.port)
         exitedByPaneID[paneID] = .exited(exitCode: exitCode, diagnostics: running.outputBuffer.diagnostics)
     }
 
@@ -402,19 +417,24 @@ public actor CodeServerManager {
         }
     }
 
-    private func unusedLocalhostPort(maxAttempts: Int = 32) throws -> UInt16 {
-        let usedPorts = Set(runningByPaneID.values.map(\.port))
+    private static let portReservations = LocalhostPortReservations()
+
+    private static func reserveUnusedLocalhostPort(maxAttempts: Int = 32) throws -> UInt16 {
         var lastError: CodeServerManagerError?
         for _ in 0..<maxAttempts {
             do {
-                let port = try Self.randomLocalhostPort()
-                if !usedPorts.contains(port) { return port }
+                let port = try randomLocalhostPort()
+                if portReservations.reserve(port) { return port }
             } catch let error as CodeServerManagerError {
                 lastError = error
             }
         }
         if let lastError { throw lastError }
         throw CodeServerManagerError.randomPortUnavailable(EADDRINUSE)
+    }
+
+    private static func releaseReservedLocalhostPort(_ port: UInt16) {
+        portReservations.release(port)
     }
 
     private static func randomLocalhostPort() throws -> UInt16 {
@@ -459,6 +479,25 @@ public actor CodeServerManager {
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
+    }
+}
+
+private final class LocalhostPortReservations: @unchecked Sendable {
+    private let lock = NSLock()
+    private var reservedPorts: Set<UInt16> = []
+
+    func reserve(_ port: UInt16) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !reservedPorts.contains(port) else { return false }
+        reservedPorts.insert(port)
+        return true
+    }
+
+    func release(_ port: UInt16) {
+        lock.lock()
+        reservedPorts.remove(port)
+        lock.unlock()
     }
 }
 
