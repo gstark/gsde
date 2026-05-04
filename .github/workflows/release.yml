@@ -69,17 +69,32 @@ jobs:
           ARCHIVE: ${{ steps.checksum.outputs.archive }}
           SHA256: ${{ steps.checksum.outputs.sha256 }}
         run: |
+          retry() {
+            local attempt=1
+            local max_attempts=5
+            until "$@"; do
+              if [[ "$attempt" -ge "$max_attempts" ]]; then
+                echo "Command failed after ${attempt} attempts: $*" >&2
+                return 1
+              fi
+              local delay=$((attempt * 10))
+              echo "Command failed; retrying in ${delay}s (${attempt}/${max_attempts}): $*" >&2
+              sleep "$delay"
+              attempt=$((attempt + 1))
+            done
+          }
+
           tag="v${VERSION}"
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release edit "$tag" \
+            retry gh release edit "$tag" \
               --title "GSDE ${tag}" \
               --notes "SHA-256: \`${SHA256}\`"
           else
-            gh release create "$tag" \
+            retry gh release create "$tag" \
               --title "GSDE ${tag}" \
               --notes "SHA-256: \`${SHA256}\`"
           fi
-          gh release upload "$tag" "$ARCHIVE" "$ARCHIVE.sha256" --clobber
+          retry gh release upload "$tag" "$ARCHIVE" "$ARCHIVE.sha256" --clobber
 
       - name: Update Homebrew cask on main
         shell: bash
