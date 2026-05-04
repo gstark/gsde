@@ -1178,7 +1178,13 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
         cef_request_context_settings_t context_settings;
         memset(&context_settings, 0, sizeof(context_settings));
         context_settings.size = sizeof(context_settings);
-        cef_string_utf8_to_utf16_ptr(cache_path, strlen(cache_path), &context_settings.cache_path);
+        int converted_cache_path = cef_string_utf8_to_utf16_ptr(cache_path, strlen(cache_path), &context_settings.cache_path);
+        if (!converted_cache_path || context_settings.cache_path.length == 0) {
+            cef_string_utf16_clear_ptr(&context_settings.cache_path);
+            set_last_error("CEF request context cache path conversion failed");
+            delete browser;
+            return NULL;
+        }
         context_settings.persist_session_cookies = 1;
         browser->request_context = cef_request_context_create_context_ptr(&context_settings, NULL);
         cef_string_utf16_clear_ptr(&context_settings.cache_path);
