@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <atomic>
 #include <new>
+#include <string>
+#include <vector>
 
 typedef std::atomic<int> atomic_int;
 static inline int atomic_load(const atomic_int *value) { return value->load(std::memory_order_seq_cst); }
@@ -42,6 +44,7 @@ static char last_error[512] = "No CEF errors recorded";
 static atomic_int next_browser_id{1};
 static atomic_int live_browser_count{0};
 static char global_cache_path[4096] = {0};
+static char global_root_cache_path[4096] = {0};
 
 #if GSDE_HAVE_CEF_HEADERS
 typedef int (*cef_execute_process_fn)(const cef_main_args_t *, cef_app_t *, void *);
@@ -86,6 +89,77 @@ static void gsde_log(const char *message) {
 static void set_last_error(const char *message) {
     snprintf(last_error, sizeof(last_error), "%s", message ? message : "unknown CEF error");
     gsde_log(last_error);
+}
+
+static bool normalize_absolute_path(const char *path, std::string *normalized) {
+    if (!path || path[0] != '/') return false;
+
+    std::vector<std::string> components;
+    const char *cursor = path;
+    while (*cursor) {
+        while (*cursor == '/') cursor++;
+        const char *start = cursor;
+        while (*cursor && *cursor != '/') cursor++;
+        if (cursor == start) break;
+
+        std::string component(start, cursor - start);
+        if (component.empty() || component == ".") continue;
+        if (component == "..") {
+            if (!components.empty()) components.pop_back();
+            continue;
+        }
+        components.push_back(component);
+    }
+
+    std::string result = "/";
+    for (size_t i = 0; i < components.size(); i++) {
+        if (i > 0) result += "/";
+        result += components[i];
+    }
+    *normalized = result;
+    return true;
+}
+
+static bool path_is_equal_or_child(const std::string &path, const std::string &root) {
+    if (path == root) return true;
+    if (root == "/") return path.size() > 1 && path[0] == '/';
+    return path.size() > root.size()
+        && path.compare(0, root.size(), root) == 0
+        && path[root.size()] == '/';
+}
+
+static bool validate_cache_path_under_root(const char *cache_path, const char *context) {
+    std::string normalized_cache_path;
+    if (!normalize_absolute_path(cache_path, &normalized_cache_path)) {
+        char message[1024];
+        snprintf(message, sizeof(message), "%s cache path must be absolute: %s", context, cache_path ? cache_path : "");
+        set_last_error(message);
+        return false;
+    }
+
+    if (global_root_cache_path[0] == '\0') return true;
+
+    std::string normalized_root_cache_path;
+    if (!normalize_absolute_path(global_root_cache_path, &normalized_root_cache_path)) {
+        char message[1024];
+        snprintf(message, sizeof(message), "CEF root cache path is not absolute: %s", global_root_cache_path);
+        set_last_error(message);
+        return false;
+    }
+    if (!path_is_equal_or_child(normalized_cache_path, normalized_root_cache_path)) {
+        char message[2048];
+        snprintf(
+            message,
+            sizeof(message),
+            "%s cache path must be equal to or below CEF root cache path; cache=%s root=%s",
+            context,
+            normalized_cache_path.c_str(),
+            normalized_root_cache_path.c_str()
+        );
+        set_last_error(message);
+        return false;
+    }
+    return true;
 }
 
 const char *gsde_chromium_last_error(void) {
@@ -188,16 +262,51 @@ int gsde_chromium_initialize(const char *root_cache_path, const char *cache_path
     settings.external_message_pump = 0;
     settings.multi_threaded_message_loop = 0;
 
+    std::string normalized_root_cache_path;
     if (root_cache_path && root_cache_path[0] != '\0') {
-        cef_string_utf8_to_utf16_ptr(root_cache_path, strlen(root_cache_path), &settings.root_cache_path);
+        if (!normalize_absolute_path(root_cache_path, &normalized_root_cache_path)) {
+            set_last_error("CEF root cache path must be absolute");
+            return 0;
+        }
+        int converted_root_cache_path = cef_string_utf8_to_utf16_ptr(normalized_root_cache_path.c_str(), normalized_root_cache_path.size(), &settings.root_cache_path);
+        if (!converted_root_cache_path || settings.root_cache_path.length == 0) {
+            cef_string_utf16_clear_ptr(&settings.root_cache_path);
+            set_last_error("CEF root cache path conversion failed");
+            return 0;
+        }
     }
     if (cache_path && cache_path[0] != '\0') {
-        snprintf(global_cache_path, sizeof(global_cache_path), "%s", cache_path);
-        cef_string_utf8_to_utf16_ptr(cache_path, strlen(cache_path), &settings.cache_path);
+        std::string previous_root_cache_path(global_root_cache_path);
+        snprintf(global_root_cache_path, sizeof(global_root_cache_path), "%s", normalized_root_cache_path.c_str());
+        if (!validate_cache_path_under_root(cache_path, "CEF global")) {
+            snprintf(global_root_cache_path, sizeof(global_root_cache_path), "%s", previous_root_cache_path.c_str());
+            cef_string_utf16_clear_ptr(&settings.root_cache_path);
+            return 0;
+        }
+        std::string normalized_cache_path;
+        normalize_absolute_path(cache_path, &normalized_cache_path);
+        snprintf(global_cache_path, sizeof(global_cache_path), "%s", normalized_cache_path.c_str());
+        int converted_cache_path = cef_string_utf8_to_utf16_ptr(normalized_cache_path.c_str(), normalized_cache_path.size(), &settings.cache_path);
+        if (!converted_cache_path || settings.cache_path.length == 0) {
+            cef_string_utf16_clear_ptr(&settings.root_cache_path);
+            cef_string_utf16_clear_ptr(&settings.cache_path);
+            set_last_error("CEF global cache path conversion failed");
+            return 0;
+        }
         settings.persist_session_cookies = 1;
+    } else {
+        global_cache_path[0] = '\0';
+        snprintf(global_root_cache_path, sizeof(global_root_cache_path), "%s", normalized_root_cache_path.c_str());
     }
     if (browser_subprocess_path && browser_subprocess_path[0] != '\0') {
-        cef_string_utf8_to_utf16_ptr(browser_subprocess_path, strlen(browser_subprocess_path), &settings.browser_subprocess_path);
+        int converted_subprocess_path = cef_string_utf8_to_utf16_ptr(browser_subprocess_path, strlen(browser_subprocess_path), &settings.browser_subprocess_path);
+        if (!converted_subprocess_path || settings.browser_subprocess_path.length == 0) {
+            cef_string_utf16_clear_ptr(&settings.root_cache_path);
+            cef_string_utf16_clear_ptr(&settings.cache_path);
+            cef_string_utf16_clear_ptr(&settings.browser_subprocess_path);
+            set_last_error("CEF browser subprocess path conversion failed");
+            return 0;
+        }
     }
 
     char init_message[1024];
@@ -1177,10 +1286,17 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     configure_browser_handlers(browser);
 
     if (cache_path && cache_path[0] != '\0') {
+        if (!validate_cache_path_under_root(cache_path, "CEF request context")) {
+            delete browser;
+            return NULL;
+        }
+        std::string normalized_cache_path;
+        normalize_absolute_path(cache_path, &normalized_cache_path);
+
         cef_request_context_settings_t context_settings;
         memset(&context_settings, 0, sizeof(context_settings));
         context_settings.size = sizeof(context_settings);
-        int converted_cache_path = cef_string_utf8_to_utf16_ptr(cache_path, strlen(cache_path), &context_settings.cache_path);
+        int converted_cache_path = cef_string_utf8_to_utf16_ptr(normalized_cache_path.c_str(), normalized_cache_path.size(), &context_settings.cache_path);
         if (!converted_cache_path || context_settings.cache_path.length == 0) {
             cef_string_utf16_clear_ptr(&context_settings.cache_path);
             set_last_error("CEF request context cache path conversion failed");
@@ -1188,13 +1304,15 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
             return NULL;
         }
         char context_message[1024];
-        snprintf(context_message, sizeof(context_message), "creating CEF request context cache=%s", cache_path);
+        snprintf(context_message, sizeof(context_message), "creating CEF request context cache=%s", normalized_cache_path.c_str());
         gsde_log(context_message);
         context_settings.persist_session_cookies = 1;
         browser->request_context = cef_request_context_create_context_ptr(&context_settings, NULL);
         cef_string_utf16_clear_ptr(&context_settings.cache_path);
         if (!browser->request_context) {
-            set_last_error("CEF request context creation failed");
+            char error_message[1024];
+            snprintf(error_message, sizeof(error_message), "CEF request context creation failed for cache=%s", normalized_cache_path.c_str());
+            set_last_error(error_message);
             delete browser;
             return NULL;
         }
