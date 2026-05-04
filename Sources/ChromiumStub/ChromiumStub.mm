@@ -200,7 +200,9 @@ int gsde_chromium_initialize(const char *root_cache_path, const char *cache_path
         cef_string_utf8_to_utf16_ptr(browser_subprocess_path, strlen(browser_subprocess_path), &settings.browser_subprocess_path);
     }
 
-    gsde_log("calling cef_initialize");
+    char init_message[1024];
+    snprintf(init_message, sizeof(init_message), "calling cef_initialize root=%s cache=%s", root_cache_path ? root_cache_path : "", cache_path ? cache_path : "");
+    gsde_log(init_message);
     int ok = cef_initialize_ptr(&args, &settings, gsde_cef_app(), NULL);
     cef_string_utf16_clear_ptr(&settings.root_cache_path);
     cef_string_utf16_clear_ptr(&settings.cache_path);
@@ -1185,6 +1187,9 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
             delete browser;
             return NULL;
         }
+        char context_message[1024];
+        snprintf(context_message, sizeof(context_message), "creating CEF request context cache=%s", cache_path);
+        gsde_log(context_message);
         context_settings.persist_session_cookies = 1;
         browser->request_context = cef_request_context_create_context_ptr(&context_settings, NULL);
         cef_string_utf16_clear_ptr(&context_settings.cache_path);
