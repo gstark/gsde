@@ -14,7 +14,7 @@ BINARY := .build/$(CONFIG)/$(SWIFT_PRODUCT)
 CHROMIUM_HELPER_BINARY := .build/$(CONFIG)/$(CHROMIUM_HELPER_PRODUCT)
 BUILT_LIBGHOSTTY := build/libghostty/libghostty.dylib
 CEF_FRAMEWORK := external/cef/Release/Chromium Embedded Framework.framework
-CODE_SERVER_DIR := external/code-server
+CODE_SERVER_DIR ?= $(if $(GSDE_CODE_SERVER_DIR),$(GSDE_CODE_SERVER_DIR),external/code-server)
 
 .PHONY: build libghostty cef code-server app app-with-ghostty app-with-chromium run run-cef run-cef-two-browsers run-cef-four-browsers run-foreground run-cef-foreground smoke-default smoke-cef smoke-cef-custom-urls smoke-cef-four smoke-cef-graceful smoke-cef-repeat smoke-configured verify-code-server-bundle verify-cef-bundle verify-cef verify release release-adhoc release-signed release-notarized sign-release notarize-release reset-state clean
 
@@ -28,7 +28,7 @@ cef:
 	./scripts/fetch-cef.sh
 
 code-server:
-	./scripts/fetch-code-server.sh
+	GSDE_CODE_SERVER_DIR="$(CODE_SERVER_DIR)" ./scripts/fetch-code-server.sh
 
 app: build code-server
 	rm -rf $(BUNDLE_DIR)
