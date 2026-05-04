@@ -617,6 +617,7 @@ static int CEF_CALLBACK gsde_can_download(cef_download_handler_t *self, cef_brow
     copy_cef_string_to_buffer(url, url_buffer, sizeof(url_buffer));
     char message[768];
     snprintf(message, sizeof(message), "CEF browser #%d allowing download: %s", browser->browser_id, url_buffer);
+    snprintf(browser->status_message, sizeof(browser->status_message), "Download requested…");
     gsde_log(message);
     return 1;
 }
@@ -634,6 +635,7 @@ static int CEF_CALLBACK gsde_on_before_download(
     copy_cef_string_to_buffer(suggested_name, name_buffer, sizeof(name_buffer));
     char message[512];
     snprintf(message, sizeof(message), "CEF browser #%d starting download: %s", browser->browser_id, name_buffer[0] ? name_buffer : "(unnamed)");
+    snprintf(browser->status_message, sizeof(browser->status_message), "Downloading %s…", name_buffer[0] ? name_buffer : "file");
     gsde_log(message);
     if (callback && callback->cont) {
         cef_string_t empty_path;
@@ -655,11 +657,24 @@ static void CEF_CALLBACK gsde_on_download_updated(
     if (download_item->is_complete && download_item->is_complete(download_item)) {
         char message[128];
         snprintf(message, sizeof(message), "CEF browser #%d download complete", browser->browser_id);
+        snprintf(browser->status_message, sizeof(browser->status_message), "Download complete");
         gsde_log(message);
     } else if (download_item->is_canceled && download_item->is_canceled(download_item)) {
         char message[128];
         snprintf(message, sizeof(message), "CEF browser #%d download canceled", browser->browser_id);
+        snprintf(browser->status_message, sizeof(browser->status_message), "Download canceled");
         gsde_log(message);
+    } else if (download_item->is_in_progress && download_item->is_in_progress(download_item)) {
+        int percent = download_item->get_percent_complete ? download_item->get_percent_complete(download_item) : -1;
+        int64_t received = download_item->get_received_bytes ? download_item->get_received_bytes(download_item) : 0;
+        int64_t total = download_item->get_total_bytes ? download_item->get_total_bytes(download_item) : 0;
+        if (percent >= 0) {
+            snprintf(browser->status_message, sizeof(browser->status_message), "Downloading… %d%%", percent);
+        } else if (total > 0) {
+            snprintf(browser->status_message, sizeof(browser->status_message), "Downloading… %lld / %lld bytes", (long long)received, (long long)total);
+        } else {
+            snprintf(browser->status_message, sizeof(browser->status_message), "Downloading… %lld bytes", (long long)received);
+        }
     }
 }
 
