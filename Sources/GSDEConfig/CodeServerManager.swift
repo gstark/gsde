@@ -310,6 +310,7 @@ public actor CodeServerManager {
                 timeout: request.readinessTimeout,
                 diagnostics: { outputBuffer.diagnostics }
             )
+            try Task.checkCancellation()
         } catch let error as CodeServerManagerError {
             runningByPaneID[request.paneID] = nil
             exitedByPaneID[request.paneID] = nil
@@ -320,6 +321,16 @@ public actor CodeServerManager {
             exitedByPaneID[request.paneID] = nil
             handle.terminate()
             throw error
+        }
+
+        if !handle.isRunning {
+            runningByPaneID[request.paneID] = nil
+            exitedByPaneID[request.paneID] = nil
+            throw CodeServerManagerError.processExitedBeforeReady(
+                paneID: request.paneID,
+                exitCode: handle.terminationStatus,
+                diagnostics: outputBuffer.diagnostics
+            )
         }
 
         return ManagedCodeServerSession(

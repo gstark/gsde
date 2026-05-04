@@ -100,6 +100,32 @@ struct CodeServerManagerTests {
         #expect(await manager.status(forPaneID: "editor") == nil)
     }
 
+    @Test("fails startup if the process exits after readiness but before the session is returned")
+    func failsStartupWhenProcessExitsBeforeSessionReturn() async throws {
+        let project = try temporaryDirectory()
+        let launcher = RecordingCodeServerLauncher()
+        launcher.stdoutOnLaunch = "served once\n"
+        let manager = CodeServerManager(
+            launchBuilder: CodeServerLaunchBuilder(stateResolver: VSCodePaneStateResolver(environment: ["GSDE_PROJECT_DIR": project.path])),
+            processLauncher: launcher,
+            readinessChecker: TerminatingReadinessChecker()
+        )
+
+        await #expect(throws: CodeServerManagerError.processExitedBeforeReady(
+            paneID: "editor",
+            exitCode: 15,
+            diagnostics: CodeServerProcessDiagnostics(stdout: "served once\n", stderr: "")
+        )) {
+            try await manager.start(CodeServerStartRequest(
+                paneID: "editor",
+                configSource: .projectDefault(project.appendingPathComponent(".config/gsde/config.toml")),
+                executableURL: URL(fileURLWithPath: "/tmp/fake-code-server"),
+                readinessTimeout: 1
+            ))
+        }
+        #expect(await manager.status(forPaneID: "editor") == nil)
+    }
+
     @Test("launches a real subprocess, detects HTTP readiness, captures output, and stops it")
     func launchesRealSubprocessAndStopsIt() async throws {
         let project = try temporaryDirectory()
@@ -296,6 +322,17 @@ private final class ImmediateReadinessChecker: CodeServerReadinessChecking, @unc
         diagnostics: @escaping @Sendable () -> CodeServerProcessDiagnostics
     ) async throws {
         lock.withLock { _readyURLs.append(url) }
+    }
+}
+
+private struct TerminatingReadinessChecker: CodeServerReadinessChecking {
+    func waitUntilReady(
+        url: URL,
+        process: any CodeServerProcessHandle,
+        timeout: TimeInterval,
+        diagnostics: @escaping @Sendable () -> CodeServerProcessDiagnostics
+    ) async throws {
+        process.terminate()
     }
 }
 
