@@ -131,6 +131,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
 
     override func becomeFirstResponder() -> Bool {
         Self.activePane = self
+        updateWindowTitleForActivePane()
         if let cefBrowser {
             gsde_chromium_browser_focus(cefBrowser, 1)
             return true
@@ -147,6 +148,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
 
     override func mouseDown(with event: NSEvent) {
         Self.activePane = self
+        updateWindowTitleForActivePane()
         window?.makeFirstResponder(self)
         if let cefBrowser {
             gsde_chromium_browser_focus(cefBrowser, 1)
@@ -216,6 +218,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
 
     private func activateCEFBrowserPane() {
         Self.activePane = self
+        updateWindowTitleForActivePane()
         window?.makeFirstResponder(self)
         if let cefBrowser {
             gsde_chromium_browser_focus(cefBrowser, 1)
@@ -766,6 +769,11 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
 
     private func refreshCEFState() {
         guard let cefBrowser else { return }
+        let currentTitle = String(cString: gsde_chromium_browser_title(cefBrowser))
+        if Self.activePane === self, !currentTitle.isEmpty {
+            updateWindowTitleForActivePane(title: currentTitle)
+        }
+
         let currentURL = String(cString: gsde_chromium_browser_current_url(cefBrowser))
         if !currentURL.isEmpty {
             if urlField.currentEditor() == nil {
@@ -830,11 +838,26 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             urlField.stringValue = url.absoluteString
             saveCurrentURL(url)
         }
+        if Self.activePane === self {
+            updateWindowTitleForActivePane(title: webView.title)
+        }
         updateNavigationButtons()
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         updateNavigationButtons()
+    }
+
+    private func updateWindowTitleForActivePane(title: String? = nil) {
+        guard Self.activePane === self else { return }
+        let cleanTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !cleanTitle.isEmpty {
+            window?.title = "GSDE — \(cleanTitle)"
+        } else if !urlField.stringValue.isEmpty {
+            window?.title = "GSDE — \(urlField.stringValue)"
+        } else {
+            window?.title = "GSDE"
+        }
     }
 
     private func saveCurrentURL(_ url: URL) {
