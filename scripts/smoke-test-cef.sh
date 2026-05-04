@@ -44,8 +44,8 @@ trap cleanup EXIT
 
 for _ in $(seq 1 "$WAIT_SECONDS"); do
   if [[ -f "$LOG" ]]; then
-    created_count=$(grep -c 'CEF browser created with native view' "$LOG" || true)
-    loaded_count=$(grep -c 'CEF load end: HTTP 200' "$LOG" || true)
+    created_count=$(grep -Ec 'CEF browser #[0-9]+ created with native view' "$LOG" || true)
+    loaded_count=$(grep -Ec 'CEF browser #[0-9]+ load end: HTTP 200' "$LOG" || true)
     if [[ "$created_count" -ge "$BROWSER_PANES" && "$loaded_count" -ge "$BROWSER_PANES" ]]; then
       echo "CEF smoke test passed: $created_count browser(s), $loaded_count successful load(s)"
       cat "$LOG"

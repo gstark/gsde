@@ -25,6 +25,7 @@ static bool attempted_load = false;
 static bool initialized = false;
 static char status[512] = "WebKit fallback backend active; CEF has not been initialized";
 static char last_error[512] = "No CEF errors recorded";
+static atomic_int next_browser_id = 1;
 
 #if GSDE_HAVE_CEF_HEADERS
 typedef int (*cef_execute_process_fn)(const cef_main_args_t *, cef_app_t *, void *);
@@ -232,6 +233,7 @@ struct gsde_chromium_browser {
     cef_browser_t *browser;
     cef_window_handle_t view;
     cef_request_context_t *request_context;
+    int browser_id;
     char current_url[2048];
     int is_loading;
     int http_status;
@@ -320,7 +322,9 @@ static cef_load_handler_t *CEF_CALLBACK gsde_get_load_handler(cef_client_t *clie
 static void CEF_CALLBACK gsde_on_after_created(cef_life_span_handler_t *self, cef_browser_t *cef_browser) {
     gsde_chromium_browser_t *browser = browser_from_life_span(self);
     browser->browser = cef_browser;
-    gsde_log("CEF on_after_created");
+    char message[128];
+    snprintf(message, sizeof(message), "CEF browser #%d on_after_created", browser->browser_id);
+    gsde_log(message);
     if (browser->browser && browser->browser->base.add_ref) browser->browser->base.add_ref((cef_base_ref_counted_t *)browser->browser);
 }
 
@@ -342,7 +346,9 @@ static void CEF_CALLBACK gsde_on_loading_state_change(cef_load_handler_t *self, 
     (void)cef_browser; (void)canGoBack; (void)canGoForward;
     gsde_chromium_browser_t *browser = browser_from_load_handler(self);
     browser->is_loading = isLoading ? 1 : 0;
-    gsde_log(isLoading ? "CEF load state: loading" : "CEF load state: idle");
+    char message[128];
+    snprintf(message, sizeof(message), "CEF browser #%d load state: %s", browser->browser_id, isLoading ? "loading" : "idle");
+    gsde_log(message);
 }
 
 static void CEF_CALLBACK gsde_on_load_start(cef_load_handler_t *self, cef_browser_t *cef_browser, cef_frame_t *frame, cef_transition_type_t transition_type) {
@@ -350,7 +356,9 @@ static void CEF_CALLBACK gsde_on_load_start(cef_load_handler_t *self, cef_browse
     gsde_chromium_browser_t *browser = browser_from_load_handler(self);
     browser->http_status = 0;
     update_browser_url_from_frame(browser, frame);
-    gsde_log("CEF load start");
+    char message[128];
+    snprintf(message, sizeof(message), "CEF browser #%d load start", browser->browser_id);
+    gsde_log(message);
 }
 
 static void CEF_CALLBACK gsde_on_load_end(cef_load_handler_t *self, cef_browser_t *cef_browser, cef_frame_t *frame, int httpStatusCode) {
@@ -359,7 +367,7 @@ static void CEF_CALLBACK gsde_on_load_end(cef_load_handler_t *self, cef_browser_
     browser->http_status = httpStatusCode;
     update_browser_url_from_frame(browser, frame);
     char message[128];
-    snprintf(message, sizeof(message), "CEF load end: HTTP %d", httpStatusCode);
+    snprintf(message, sizeof(message), "CEF browser #%d load end: HTTP %d", browser->browser_id, httpStatusCode);
     gsde_log(message);
 }
 
@@ -369,7 +377,7 @@ static void CEF_CALLBACK gsde_on_load_error(cef_load_handler_t *self, cef_browse
     browser->http_status = (int)errorCode;
     update_browser_url_from_frame(browser, frame);
     char message[128];
-    snprintf(message, sizeof(message), "CEF load error: %d", errorCode);
+    snprintf(message, sizeof(message), "CEF browser #%d load error: %d", browser->browser_id, errorCode);
     gsde_log(message);
 }
 
@@ -413,6 +421,7 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     gsde_chromium_browser_t *browser = calloc(1, sizeof(gsde_chromium_browser_t));
     if (!browser) return NULL;
     atomic_init(&browser->ref_count, 1);
+    browser->browser_id = atomic_fetch_add(&next_browser_id, 1);
     snprintf(browser->current_url, sizeof(browser->current_url), "%s", initial_url ? initial_url : "about:blank");
 
     setup_client_base(&browser->client.base, sizeof(browser->client));
@@ -468,7 +477,9 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
 
     snprintf(status, sizeof(status), "CEF browser created%s", browser->view ? " with native view" : " without native view");
     snprintf(last_error, sizeof(last_error), "No CEF errors recorded");
-    gsde_log(status);
+    char created_message[160];
+    snprintf(created_message, sizeof(created_message), "CEF browser #%d created%s", browser->browser_id, browser->view ? " with native view" : " without native view");
+    gsde_log(created_message);
     if (browser->browser->base.add_ref) browser->browser->base.add_ref((cef_base_ref_counted_t *)browser->browser);
     return browser;
 #else
