@@ -627,6 +627,7 @@ final class VSCodePaneView: NSView {
             stopTask = Task { await codeServerManager.stop(paneID: paneID) }
             return
         }
+        installActivePaneObserverIfNeeded()
         installMouseFocusMonitorIfNeeded()
         if Self.activePane == nil, BrowserPaneView.activePane == nil, GhosttyHostView.activePane == nil {
             markActivePane()
@@ -686,7 +687,7 @@ final class VSCodePaneView: NSView {
             overlayContainer.topAnchor.constraint(equalTo: topAnchor),
             overlayContainer.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
-        installActivePaneObserver()
+        installActivePaneObserverIfNeeded()
         showOverlay(title: "Starting VS Code…", detail: "Launching code-server for pane \(paneID)", retryAction: nil)
         startCodeServerIfNeeded()
     }
@@ -702,9 +703,16 @@ final class VSCodePaneView: NSView {
         hasStartedSession = false
         currentServerURL = nil
         currentCEFCacheDirectory = nil
+        if Self.activePane === self {
+            Self.activePane = nil
+        }
         if let mouseFocusMonitor {
             NSEvent.removeMonitor(mouseFocusMonitor)
             self.mouseFocusMonitor = nil
+        }
+        if let activePaneObserver {
+            NotificationCenter.default.removeObserver(activePaneObserver)
+            self.activePaneObserver = nil
         }
         if let cefBrowser {
             gsde_chromium_browser_destroy(cefBrowser)
@@ -729,7 +737,8 @@ final class VSCodePaneView: NSView {
         }
     }
 
-    private func installActivePaneObserver() {
+    private func installActivePaneObserverIfNeeded() {
+        guard activePaneObserver == nil else { return }
         activePaneObserver = NotificationCenter.default.addObserver(
             forName: .gsdeActivePaneDidChange,
             object: nil,
@@ -788,13 +797,13 @@ final class VSCodePaneView: NSView {
                 let session = try await codeServerManager.start(CodeServerStartRequest(paneID: paneID, configSource: configSource))
                 try Task.checkCancellation()
                 let shouldStopSession = await MainActor.run { [weak self] in
-                    guard let self, startTaskID == taskID else { return false }
+                    guard let self, startTaskID == taskID else { return true }
                     currentServerURL = session.serverURL
                     currentCEFCacheDirectory = session.launchConfiguration.stateDirectories.cefCacheDirectory
                     hasStartedSession = true
                     startTask = nil
                     startTaskID = nil
-                    guard window != nil else { return false }
+                    guard window != nil else { return true }
                     return attachBrowserToStartedSessionOrFail()
                 }
                 if shouldStopSession {
@@ -802,10 +811,13 @@ final class VSCodePaneView: NSView {
                 }
             } catch is CancellationError {
                 let shouldStop = await MainActor.run { [weak self] in
-                    guard let self, startTaskID == taskID else { return false }
-                    startTask = nil
-                    startTaskID = nil
-                    return window == nil
+                    guard let self else { return true }
+                    let taskIsCurrent = startTaskID == taskID
+                    if taskIsCurrent {
+                        startTask = nil
+                        startTaskID = nil
+                    }
+                    return taskIsCurrent || window == nil
                 }
                 if shouldStop {
                     await codeServerManager.stop(paneID: paneID)
@@ -942,6 +954,8 @@ final class VSCodePaneView: NSView {
     }
 
     private func showFailure(title: String, detail: String) {
+        statusTask?.cancel()
+        statusTask = nil
         cefStatusTimer?.invalidate()
         cefStatusTimer = nil
         if let cefBrowser {
