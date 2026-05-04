@@ -62,17 +62,26 @@ jobs:
           printf '%s  %s\n' "$sha" "$(basename "$archive")" > "$archive.sha256"
 
       - name: Upload GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: GSDE v${{ steps.version.outputs.version }}
-          files: |
-            ${{ steps.checksum.outputs.archive }}
-            ${{ steps.checksum.outputs.archive }}.sha256
-          body: |
-            SHA-256: `${{ steps.checksum.outputs.sha256 }}`
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          ARCHIVE: ${{ steps.checksum.outputs.archive }}
+          SHA256: ${{ steps.checksum.outputs.sha256 }}
+        run: |
+          tag="v${VERSION}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" \
+              --title "GSDE ${tag}" \
+              --notes "SHA-256: \`${SHA256}\`"
+          else
+            gh release create "$tag" \
+              --title "GSDE ${tag}" \
+              --notes "SHA-256: \`${SHA256}\`"
+          fi
+          gh release upload "$tag" "$ARCHIVE" "$ARCHIVE.sha256" --clobber
 
-      - name: Update Homebrew formula on main
+      - name: Update Homebrew cask on main
         shell: bash
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -87,11 +96,12 @@ jobs:
 
           scripts/update-homebrew-formula.sh "$VERSION" "$ARCHIVE" "$REPOSITORY"
 
-          if git diff --quiet -- Formula/gsde.rb; then
-            echo "Formula/gsde.rb is already current."
+          if git diff --quiet -- Casks/gsde.rb Formula/gsde.rb; then
+            echo "Homebrew cask is already current."
             exit 0
           fi
 
-          git add Formula/gsde.rb
-          git commit -m "Update Homebrew formula for v${VERSION}"
+          git add Casks/gsde.rb
+          git rm -f Formula/gsde.rb 2>/dev/null || true
+          git commit -m "Update Homebrew cask for v${VERSION}"
           git push origin main

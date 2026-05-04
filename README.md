@@ -104,21 +104,21 @@ make libghostty release-adhoc  # ad-hoc codesign before archiving
 
 ## Homebrew tap setup
 
-This repository is structured so it can also act as a Homebrew tap. After publishing a GitHub release archive, update the formula and push it:
+This repository is structured so it can also act as a Homebrew tap. GSDE is distributed as a cask because the release archive is a macOS `.app` bundle with embedded frameworks. After publishing a GitHub release archive, update the cask and push it:
 
 ```sh
 scripts/update-homebrew-formula.sh 0.1.0 dist/GSDE-0.1.0.zip OWNER/gsde
-git add Formula/gsde.rb && git commit -m "Update Homebrew formula for v0.1.0"
+git add Casks/gsde.rb && git commit -m "Update Homebrew cask for v0.1.0"
 ```
 
 Install from the tap with:
 
 ```sh
-brew tap OWNER/gsde
-brew install gsde
+brew tap OWNER/gsde https://github.com/OWNER/gsde.git
+brew install --cask gsde
 ```
 
-The formula installs `GSDE.app` under Homebrew's prefix and exposes the `gsde` CLI on `PATH`.
+The cask installs `GSDE.app` and exposes the `gsde` CLI on `PATH`.
 
 
 Developer ID signing and notarization helpers are available without opening Xcode:
