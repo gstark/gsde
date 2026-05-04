@@ -206,6 +206,10 @@ struct WorkspaceConfigTests {
         #expect(throws: VSCodePaneLaunchError.missingConfigFile) {
             try builder.configuration(executableURL: executableURL, paneID: "editor", configSource: .builtIn, port: 3000, password: "secret")
         }
+        #expect(throws: VSCodePaneLaunchError.invalidBindHost("127.0.0.1/invalid")) {
+            try CodeServerLaunchBuilder(bindHost: "127.0.0.1/invalid", stateResolver: VSCodePaneStateResolver(environment: [:]))
+                .configuration(executableURL: executableURL, paneID: "editor", configSource: .environment(configURL), port: 3000, password: "secret")
+        }
     }
 
     @Test("vscode pane state directories are created")

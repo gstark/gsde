@@ -5,6 +5,7 @@ public enum VSCodePaneLaunchError: Error, Equatable, CustomStringConvertible {
     case emptyPaneID
     case invalidPort(UInt16)
     case emptyPassword
+    case invalidBindHost(String)
 
     public var description: String {
         switch self {
@@ -16,6 +17,8 @@ public enum VSCodePaneLaunchError: Error, Equatable, CustomStringConvertible {
             return "code-server port must be non-zero; received \(port)"
         case .emptyPassword:
             return "code-server password must not be empty"
+        case .invalidBindHost(let host):
+            return "code-server bind host must be a non-empty host name or IP address; received \(host.debugDescription)"
         }
     }
 }
@@ -152,7 +155,8 @@ public struct CodeServerLaunchBuilder: Sendable {
         guard !password.isEmpty else { throw VSCodePaneLaunchError.emptyPassword }
 
         let stateDirectories = try stateResolver.directories(paneID: paneID, configSource: configSource)
-        let bindAddress = "\(bindHost):\(port)"
+        let normalizedBindHost = try Self.normalizedHost(bindHost)
+        let bindAddress = Self.bindAddress(host: normalizedBindHost, port: port)
         let arguments = [
             "--bind-addr", bindAddress,
             "--auth", "password",
@@ -162,9 +166,7 @@ public struct CodeServerLaunchBuilder: Sendable {
             "--disable-update-check",
             stateDirectories.workspaceFolder.path
         ]
-        guard let serverURL = URL(string: "http://\(bindAddress)/") else {
-            preconditionFailure("validated localhost code-server bind address should form a URL")
-        }
+        let serverURL = try Self.serverURL(host: normalizedBindHost, port: port)
         return CodeServerLaunchConfiguration(
             executableURL: executableURL,
             arguments: arguments,
@@ -172,5 +174,33 @@ public struct CodeServerLaunchBuilder: Sendable {
             serverURL: serverURL,
             stateDirectories: stateDirectories
         )
+    }
+
+    private static func normalizedHost(_ host: String) throws -> String {
+        let normalizedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedHost.isEmpty,
+              normalizedHost.rangeOfCharacter(from: .whitespacesAndNewlines) == nil,
+              !normalizedHost.contains("/"),
+              !normalizedHost.contains("[") && !normalizedHost.contains("]") else {
+            throw VSCodePaneLaunchError.invalidBindHost(host)
+        }
+        return normalizedHost
+    }
+
+    private static func bindAddress(host: String, port: UInt16) -> String {
+        let addressHost = host.contains(":") ? "[\(host)]" : host
+        return "\(addressHost):\(port)"
+    }
+
+    private static func serverURL(host: String, port: UInt16) throws -> URL {
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = host
+        components.port = Int(port)
+        components.path = "/"
+        guard let url = components.url else {
+            throw VSCodePaneLaunchError.invalidBindHost(host)
+        }
+        return url
     }
 }
