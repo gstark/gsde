@@ -273,7 +273,7 @@ public actor CodeServerManager {
 
     deinit {
         for running in runningByPaneID.values {
-            running.handle.terminate()
+            Self.terminateAndWait(running.handle)
         }
     }
 
@@ -323,12 +323,12 @@ public actor CodeServerManager {
         } catch let error as CodeServerManagerError {
             runningByPaneID[request.paneID] = nil
             exitedByPaneID[request.paneID] = nil
-            handle.terminate()
+            Self.terminateAndWait(handle)
             throw Self.rewritePaneID(in: error, paneID: request.paneID)
         } catch {
             runningByPaneID[request.paneID] = nil
             exitedByPaneID[request.paneID] = nil
-            handle.terminate()
+            Self.terminateAndWait(handle)
             throw error
         }
 
@@ -368,20 +368,25 @@ public actor CodeServerManager {
     public func stop(paneID: String) {
         exitedByPaneID[paneID] = nil
         guard let running = runningByPaneID.removeValue(forKey: paneID) else { return }
-        running.handle.terminate()
+        Self.terminateAndWait(running.handle)
     }
 
     public func stopAll() {
         let handles = runningByPaneID.values.map(\.handle)
         runningByPaneID.removeAll()
         exitedByPaneID.removeAll()
-        for handle in handles { handle.terminate() }
+        for handle in handles { Self.terminateAndWait(handle) }
     }
 
     private func recordExit(paneID: String, launchID: UUID, exitCode: Int32) {
         guard let running = runningByPaneID[paneID], running.launchID == launchID else { return }
         runningByPaneID[paneID] = nil
         exitedByPaneID[paneID] = .exited(exitCode: exitCode, diagnostics: running.outputBuffer.diagnostics)
+    }
+
+    private static func terminateAndWait(_ handle: any CodeServerProcessHandle) {
+        handle.terminate()
+        handle.waitUntilExit()
     }
 
     private static func rewritePaneID(in error: CodeServerManagerError, paneID: String) -> CodeServerManagerError {

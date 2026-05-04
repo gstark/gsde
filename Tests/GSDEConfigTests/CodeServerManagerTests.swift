@@ -66,6 +66,7 @@ struct CodeServerManagerTests {
         _ = try await manager.start(request)
         #expect(launcher.handles.count == 2)
         #expect(launcher.handles[0].terminateCallCount == 1)
+        #expect(launcher.handles[0].waitUntilExitCallCount == 1)
     }
 
     @Test("captures output and surfaces readiness timeout diagnostics")
@@ -97,6 +98,7 @@ struct CodeServerManagerTests {
             ))
         }
         #expect(launcher.handles.first?.terminateCallCount == 1)
+        #expect(launcher.handles.first?.waitUntilExitCallCount == 1)
         #expect(await manager.status(forPaneID: "editor") == nil)
     }
 
@@ -145,6 +147,7 @@ struct CodeServerManagerTests {
         manager = nil
 
         #expect(launcher.handles.first?.terminateCallCount == 1)
+        #expect(launcher.handles.first?.waitUntilExitCallCount == 1)
     }
 
     @Test("launches a real subprocess, detects HTTP readiness, captures output, and stops it")
@@ -334,6 +337,7 @@ private final class RecordingProcessHandle: CodeServerProcessHandle, @unchecked 
     private let outputHandler: CodeServerOutputHandler
     private let exitsOnTerminate: Bool
     private(set) var terminateCallCount = 0
+    private(set) var waitUntilExitCallCount = 0
 
     init(
         terminationHandler: @escaping CodeServerTerminationHandler,
@@ -367,7 +371,9 @@ private final class RecordingProcessHandle: CodeServerProcessHandle, @unchecked 
         if exitsOnTerminate { exit(status: 15) }
     }
 
-    func waitUntilExit() {}
+    func waitUntilExit() {
+        lock.withLock { waitUntilExitCallCount += 1 }
+    }
 }
 
 private final class ImmediateReadinessChecker: CodeServerReadinessChecking, @unchecked Sendable {
