@@ -509,10 +509,25 @@ final class BrowserPaneView: NSView {
     @objc func browserReload() { reload() }
     @objc func browserReloadIgnoringCache() { performReload(ignoringCache: true) }
     @objc func browserStopLoading() { stopLoading() }
-    @objc func browserCut() { cutSelection() }
-    @objc func browserCopy() { copySelection() }
-    @objc func browserPaste() { pasteClipboard() }
-    @objc func browserSelectAll() { selectAllContent() }
+    @objc func browserCut() {
+        if performNativeTextEdit({ $0.cut(nil) }) { return }
+        cutSelection()
+    }
+
+    @objc func browserCopy() {
+        if performNativeTextEdit({ $0.copy(nil) }) { return }
+        copySelection()
+    }
+
+    @objc func browserPaste() {
+        if performNativeTextEdit({ $0.paste(nil) }) { return }
+        pasteClipboard()
+    }
+
+    @objc func browserSelectAll() {
+        if performNativeTextEdit({ $0.selectAll(nil) }) { return }
+        selectAllContent()
+    }
     @objc func browserCopyPageURL() { copyPageURL() }
     @objc func browserOpenPageInDefaultBrowser() { openPageInDefaultBrowser() }
     @objc func browserViewSource() { viewSource() }
@@ -521,6 +536,29 @@ final class BrowserPaneView: NSView {
     @objc func browserZoomIn() { zoomIn() }
     @objc func browserZoomOut() { zoomOut() }
     @objc func browserZoomReset() { zoomReset() }
+
+    private func performNativeTextEdit(_ command: (NSTextView) -> Void) -> Bool {
+        guard let editor = focusedNativeTextEditor else { return false }
+        command(editor)
+        return true
+    }
+
+    private var focusedNativeTextEditor: NSTextView? {
+        guard let firstResponder = window?.firstResponder else { return nil }
+        if let editor = firstResponder as? NSTextView,
+           editor === urlField.currentEditor() || editor === findField.currentEditor() {
+            return editor
+        }
+        if firstResponder === urlField {
+            window?.makeFirstResponder(urlField)
+            return urlField.currentEditor() as? NSTextView
+        }
+        if firstResponder === findField {
+            window?.makeFirstResponder(findField)
+            return findField.currentEditor() as? NSTextView
+        }
+        return nil
+    }
 
     @objc private func focusURLField() {
         markActivePane()
