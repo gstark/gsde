@@ -90,6 +90,13 @@ make release        # unsigned archive
 make release-adhoc  # ad-hoc codesign before archiving
 ```
 
+Developer ID signing and notarization helpers are available without opening Xcode:
+
+```sh
+GSDE_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" make sign-release
+GSDE_NOTARY_PROFILE="notarytool-profile" GSDE_RELEASE_ARCHIVE=dist/GSDE-...zip make notarize-release
+```
+
 Reset saved app state and Chromium profile data:
 
 ```sh
