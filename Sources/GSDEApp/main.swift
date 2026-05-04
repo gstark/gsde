@@ -1002,7 +1002,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         )
         window.title = "GSDE"
         window.hasShadow = false
-        window.level = .mainMenu
+        window.level = .normal
         window.contentView = contentView
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
