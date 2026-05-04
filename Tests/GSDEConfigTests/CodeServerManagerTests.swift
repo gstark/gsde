@@ -126,6 +126,27 @@ struct CodeServerManagerTests {
         #expect(await manager.status(forPaneID: "editor") == nil)
     }
 
+    @Test("terminates running processes when the manager is released")
+    func terminatesRunningProcessesWhenReleased() async throws {
+        let project = try temporaryDirectory()
+        let launcher = RecordingCodeServerLauncher()
+        var manager: CodeServerManager? = CodeServerManager(
+            launchBuilder: CodeServerLaunchBuilder(stateResolver: VSCodePaneStateResolver(environment: ["GSDE_PROJECT_DIR": project.path])),
+            processLauncher: launcher,
+            readinessChecker: ImmediateReadinessChecker()
+        )
+
+        _ = try await manager?.start(CodeServerStartRequest(
+            paneID: "editor",
+            configSource: .projectDefault(project.appendingPathComponent(".config/gsde/config.toml")),
+            executableURL: URL(fileURLWithPath: "/tmp/fake-code-server"),
+            readinessTimeout: 1
+        ))
+        manager = nil
+
+        #expect(launcher.handles.first?.terminateCallCount == 1)
+    }
+
     @Test("launches a real subprocess, detects HTTP readiness, captures output, and stops it")
     func launchesRealSubprocessAndStopsIt() async throws {
         let project = try temporaryDirectory()

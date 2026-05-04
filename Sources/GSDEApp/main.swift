@@ -624,6 +624,7 @@ final class VSCodePaneView: NSView {
     private let configSource: WorkspaceConfigSource
     private let codeServerManager: CodeServerManager
     private var startTask: Task<Void, Never>?
+    private var hasStartedSession = false
     private var embeddedView: NSView?
 
     init(paneID: String, configSource: WorkspaceConfigSource, codeServerManager: CodeServerManager) {
@@ -643,6 +644,7 @@ final class VSCodePaneView: NSView {
         if window == nil {
             startTask?.cancel()
             startTask = nil
+            hasStartedSession = false
             Task { await codeServerManager.stop(paneID: paneID) }
             return
         }
@@ -650,23 +652,34 @@ final class VSCodePaneView: NSView {
     }
 
     private func startCodeServerIfNeeded() {
-        guard startTask == nil else { return }
-        startTask = Task { [paneID, configSource, codeServerManager] in
+        guard startTask == nil, !hasStartedSession else { return }
+        startTask = Task { [weak self, paneID, configSource, codeServerManager] in
             do {
                 let session = try await codeServerManager.start(CodeServerStartRequest(paneID: paneID, configSource: configSource))
                 try Task.checkCancellation()
-                await MainActor.run {
+                let didEmbed = await MainActor.run { [weak self] in
+                    guard let self, window != nil else { return false }
+                    hasStartedSession = true
                     embed(BrowserPaneView(
                         profile: BrowserProfileConfig(name: "vscode.\(paneID)", storageDirectory: nil, persistent: false),
                         stateIdentifier: "vscode.\(paneID)",
                         initialURL: session.serverURL
                     ))
+                    startTask = nil
+                    return true
+                }
+                if !didEmbed {
+                    await codeServerManager.stop(paneID: paneID)
                 }
             } catch is CancellationError {
                 await codeServerManager.stop(paneID: paneID)
+                await MainActor.run { [weak self] in
+                    self?.startTask = nil
+                }
             } catch {
-                await MainActor.run {
-                    showStatus(title: "VS Code pane failed", detail: error.localizedDescription)
+                await MainActor.run { [weak self] in
+                    self?.showStatus(title: "VS Code pane failed", detail: error.localizedDescription)
+                    self?.startTask = nil
                 }
             }
         }

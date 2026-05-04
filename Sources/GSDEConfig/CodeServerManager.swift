@@ -270,6 +270,12 @@ public actor CodeServerManager {
         self.readinessChecker = readinessChecker
     }
 
+    deinit {
+        for running in runningByPaneID.values {
+            running.handle.terminate()
+        }
+    }
+
     public func start(_ request: CodeServerStartRequest) async throws -> ManagedCodeServerSession {
         if runningByPaneID[request.paneID] != nil {
             throw CodeServerManagerError.paneAlreadyRunning(request.paneID)
