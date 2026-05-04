@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version without leading v, for example 0.1.0'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build macOS release
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            version="${{ github.event.inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build release archive
+        env:
+          GSDE_VERSION: ${{ steps.version.outputs.version }}
+          APP_VERSION: ${{ steps.version.outputs.version }}
+          GSDE_ADHOC_SIGN: '1'
+        run: make release-adhoc
+
+      - name: Compute checksum
+        id: checksum
+        shell: bash
+        run: |
+          archive=$(cat dist/latest-release.txt)
+          sha=$(shasum -a 256 "$archive" | awk '{print $1}')
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+          printf '%s  %s\n' "$sha" "$(basename "$archive")" > "$archive.sha256"
+
+      - name: Upload GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: GSDE v${{ steps.version.outputs.version }}
+          files: |
+            ${{ steps.checksum.outputs.archive }}
+            ${{ steps.checksum.outputs.archive }}.sha256
+          body: |
+            SHA-256: `${{ steps.checksum.outputs.sha256 }}`
+
+            Update `Formula/gsde.rb` with:
+
+            ```sh
+            scripts/update-homebrew-formula.sh ${{ steps.version.outputs.version }} ${{ steps.checksum.outputs.archive }} ${{ github.repository }}
+            ```

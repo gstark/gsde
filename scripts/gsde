@@ -34,6 +34,13 @@ case "$SCRIPT_PATH" in
   */*) ;;
   *) SCRIPT_PATH=$(command -v "$SCRIPT_PATH") ;;
 esac
+while [ -L "$SCRIPT_PATH" ]; do
+  LINK_TARGET=$(readlink "$SCRIPT_PATH")
+  case "$LINK_TARGET" in
+    /*) SCRIPT_PATH="$LINK_TARGET" ;;
+    *) SCRIPT_PATH="$(dirname "$SCRIPT_PATH")/$LINK_TARGET" ;;
+  esac
+done
 SCRIPT_DIR=$(cd "$(dirname "$SCRIPT_PATH")" && pwd -P)
 
 APP_PATH="${GSDE_APP_PATH:-}"
