@@ -14,6 +14,7 @@ final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
     private var markedText = ""
     private let startupCommand: String?
     private var handledTextInput = false
+    private var keyTextAccumulator: [String]?
     private var didRunStartupCommand = false
 
     init(frame frameRect: NSRect = .zero, startupCommand: String? = nil) {
@@ -134,13 +135,27 @@ final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
     }
 
     override func keyDown(with event: NSEvent) {
+        let action = event.isARepeat ? GHOSTTY_ACTION_REPEAT : GHOSTTY_ACTION_PRESS
+
         if shouldUseTextInput(for: event) {
+            let hadMarkedText = !markedText.isEmpty
+            keyTextAccumulator = []
             handledTextInput = false
             interpretKeyEvents([event])
-            if handledTextInput { return }
+            let committedText = keyTextAccumulator ?? []
+            keyTextAccumulator = nil
+
+            if !committedText.isEmpty {
+                let composing = !markedText.isEmpty || hadMarkedText
+                for text in committedText {
+                    _ = sendKey(event, action: action, text: text, composing: composing)
+                }
+                return
+            }
+
+            if handledTextInput || !markedText.isEmpty || hadMarkedText { return }
         }
 
-        let action = event.isARepeat ? GHOSTTY_ACTION_REPEAT : GHOSTTY_ACTION_PRESS
         _ = sendKey(event, action: action, text: event.ghosttyCharacters)
     }
 
@@ -397,12 +412,19 @@ final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
     func insertText(_ string: Any, replacementRange: NSRange) {
         let text = plainText(from: string)
         guard !text.isEmpty else { return }
+        let hadMarkedText = !markedText.isEmpty
         markedText = ""
         handledTextInput = true
-        text.withCString { pointer in
-            gsde_ghostty_host_text(host, pointer, UInt(text.utf8.count))
+        if keyTextAccumulator != nil {
+            keyTextAccumulator?.append(text)
+        } else {
+            text.withCString { pointer in
+                gsde_ghostty_host_text(host, pointer, UInt(text.utf8.count))
+            }
         }
-        gsde_ghostty_host_preedit(host, "", 0)
+        if hadMarkedText {
+            gsde_ghostty_host_preedit(host, "", 0)
+        }
     }
 
     override func doCommand(by selector: Selector) {
