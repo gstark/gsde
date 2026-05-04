@@ -819,9 +819,9 @@ final class ThreePaneWorkspaceView: NSSplitView {
 
     func closeOtherPanes() {
         guard canCloseOtherPanes, let activePane = activeArrangedPane else { return }
-        arrangedSubviews
-            .filter { $0 !== activePane }
-            .forEach(removePane)
+        for pane in arrangedSubviews where pane !== activePane {
+            removePane(pane)
+        }
         persistPaneLayout()
         distributePanesEvenly()
         if let browserPane = activePane as? BrowserPaneView {
