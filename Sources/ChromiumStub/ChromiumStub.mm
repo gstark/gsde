@@ -1170,7 +1170,18 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     configure_browser_handlers(browser);
 
     if (cache_path && cache_path[0] != '\0') {
-        gsde_log("per-browser CEF cache paths are disabled; using global request context");
+        cef_request_context_settings_t context_settings;
+        memset(&context_settings, 0, sizeof(context_settings));
+        context_settings.size = sizeof(context_settings);
+        cef_string_utf8_to_utf16_ptr(cache_path, strlen(cache_path), &context_settings.cache_path);
+        context_settings.persist_session_cookies = 1;
+        browser->request_context = cef_request_context_create_context_ptr(&context_settings, NULL);
+        cef_string_utf16_clear_ptr(&context_settings.cache_path);
+        if (!browser->request_context) {
+            set_last_error("CEF request context creation failed");
+            delete browser;
+            return NULL;
+        }
     }
 
     cef_window_info_t window_info;

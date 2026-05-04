@@ -1049,7 +1049,7 @@ final class VSCodePaneView: NSView {
 final class ConfiguredPaneRegistry {
     private let definitionsByID: [String: PaneDefinition]
     private let configSource: WorkspaceConfigSource
-    private let codeServerManager = CodeServerManager()
+    private var codeServerManagersByPaneID: [String: CodeServerManager] = [:]
     private var viewsByPaneID: [String: NSView] = [:]
 
     init(config: WorkspaceConfig, configSource: WorkspaceConfigSource) {
@@ -1091,7 +1091,11 @@ final class ConfiguredPaneRegistry {
             )
             contentView = BrowserPaneView(profile: profile, stateIdentifier: definition.id, initialURL: url)
         case .vscode:
-            contentView = VSCodePaneView(paneID: definition.id, configSource: configSource, codeServerManager: codeServerManager)
+            contentView = VSCodePaneView(
+                paneID: definition.id,
+                configSource: configSource,
+                codeServerManager: codeServerManager(forPaneID: definition.id)
+            )
         }
 
         guard !definition.border.isZero || !definition.padding.isZero else { return contentView }
@@ -1103,6 +1107,13 @@ final class ConfiguredPaneRegistry {
             vscodeView.drawsActiveAppearance = false
         }
         return PaneBoxView(contentView: contentView, border: definition.border, padding: definition.padding)
+    }
+
+    private func codeServerManager(forPaneID paneID: String) -> CodeServerManager {
+        if let existingManager = codeServerManagersByPaneID[paneID] { return existingManager }
+        let manager = CodeServerManager()
+        codeServerManagersByPaneID[paneID] = manager
+        return manager
     }
 
 }

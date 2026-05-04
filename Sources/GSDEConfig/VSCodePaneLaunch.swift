@@ -141,8 +141,10 @@ public struct VSCodePaneStateResolver: Sendable {
                 .appendingPathComponent("code-server", isDirectory: true)
                 .appendingPathComponent("extensions", isDirectory: true)
                 .standardizedFileURL,
-            cefCacheDirectory: paneStateDirectory
-                .appendingPathComponent("cef-cache", isDirectory: true)
+            cefCacheDirectory: gsdeConfigDirectory
+                .appendingPathComponent("chromium", isDirectory: true)
+                .appendingPathComponent("vscode-panes", isDirectory: true)
+                .appendingPathComponent(Self.pathComponent(forPaneID: trimmedPaneID), isDirectory: true)
                 .standardizedFileURL
         )
     }

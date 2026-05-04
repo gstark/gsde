@@ -142,7 +142,7 @@ struct WorkspaceConfigTests {
         #expect(state.paneStateDirectory == paneRoot.standardizedFileURL)
         #expect(state.codeServerUserDataDirectory == paneRoot.appendingPathComponent("code-server/user-data", isDirectory: true).standardizedFileURL)
         #expect(state.codeServerExtensionsDirectory == paneRoot.appendingPathComponent("code-server/extensions", isDirectory: true).standardizedFileURL)
-        #expect(state.cefCacheDirectory == paneRoot.appendingPathComponent("cef-cache", isDirectory: true).standardizedFileURL)
+        #expect(state.cefCacheDirectory == project.appendingPathComponent(".config/gsde/chromium/vscode-panes/editor%2Fmain", isDirectory: true).standardizedFileURL)
     }
 
     @Test("vscode pane state uses containing config directory without GSDE_PROJECT_DIR")
@@ -156,6 +156,23 @@ struct WorkspaceConfigTests {
         #expect(state.workspaceFolder == configDirectory.standardizedFileURL)
         #expect(state.gsdeConfigDirectory == configDirectory.standardizedFileURL)
         #expect(state.paneStateDirectory == configDirectory.appendingPathComponent("panes/editor", isDirectory: true).standardizedFileURL)
+        #expect(state.cefCacheDirectory == configDirectory.appendingPathComponent("chromium/vscode-panes/editor", isDirectory: true).standardizedFileURL)
+    }
+
+    @Test("vscode pane state partitions multiple VS Code CEF profiles by pane ID")
+    func vscodePaneStatePartitionsMultipleVSCodeCEFProfilesByPaneID() throws {
+        let configDirectory = try temporaryDirectory()
+        let configSource = WorkspaceConfigSource.environment(configDirectory.appendingPathComponent("workspace.toml"))
+        let resolver = VSCodePaneStateResolver(environment: [:])
+
+        let left = try resolver.directories(paneID: "editor.left", configSource: configSource)
+        let right = try resolver.directories(paneID: "editor/right", configSource: configSource)
+
+        #expect(left.codeServerUserDataDirectory != right.codeServerUserDataDirectory)
+        #expect(left.codeServerExtensionsDirectory != right.codeServerExtensionsDirectory)
+        #expect(left.cefCacheDirectory != right.cefCacheDirectory)
+        #expect(left.cefCacheDirectory == configDirectory.appendingPathComponent("chromium/vscode-panes/editor.left", isDirectory: true).standardizedFileURL)
+        #expect(right.cefCacheDirectory == configDirectory.appendingPathComponent("chromium/vscode-panes/editor%2Fright", isDirectory: true).standardizedFileURL)
     }
 
     @Test("code-server launch configuration is deterministic")

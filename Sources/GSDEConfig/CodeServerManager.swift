@@ -248,6 +248,7 @@ public actor CodeServerManager {
         let launchID: UUID
         let handle: any CodeServerProcessHandle
         let launchConfiguration: CodeServerLaunchConfiguration
+        let port: UInt16
         let password: String
         let outputBuffer: CodeServerOutputBuffer
     }
@@ -283,7 +284,7 @@ public actor CodeServerManager {
         }
         exitedByPaneID[request.paneID] = nil
 
-        let port = try Self.randomLocalhostPort()
+        let port = try unusedLocalhostPort()
         let password = try Self.generatePassword()
         let executableURL = try request.executableURL ?? bundleResolver.executableURL()
         let configuration = try launchBuilder.configuration(
@@ -308,6 +309,7 @@ public actor CodeServerManager {
             launchID: launchID,
             handle: handle,
             launchConfiguration: configuration,
+            port: port,
             password: password,
             outputBuffer: outputBuffer
         )
@@ -398,6 +400,21 @@ public actor CodeServerManager {
         default:
             return error
         }
+    }
+
+    private func unusedLocalhostPort(maxAttempts: Int = 32) throws -> UInt16 {
+        let usedPorts = Set(runningByPaneID.values.map(\.port))
+        var lastError: CodeServerManagerError?
+        for _ in 0..<maxAttempts {
+            do {
+                let port = try Self.randomLocalhostPort()
+                if !usedPorts.contains(port) { return port }
+            } catch let error as CodeServerManagerError {
+                lastError = error
+            }
+        }
+        if let lastError { throw lastError }
+        throw CodeServerManagerError.randomPortUnavailable(EADDRINUSE)
     }
 
     private static func randomLocalhostPort() throws -> UInt16 {

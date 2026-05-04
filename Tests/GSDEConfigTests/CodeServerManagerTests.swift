@@ -40,6 +40,40 @@ struct CodeServerManagerTests {
         #expect(readiness.readyURLs == [session.serverURL])
     }
 
+    @Test("starts independent sessions for multiple VS Code pane IDs")
+    func startsIndependentSessionsForMultipleVSCodePaneIDs() async throws {
+        let project = try temporaryDirectory()
+        let configURL = project.appendingPathComponent(".config/gsde/config.toml")
+        let launcher = RecordingCodeServerLauncher()
+        let manager = CodeServerManager(
+            launchBuilder: CodeServerLaunchBuilder(stateResolver: VSCodePaneStateResolver(environment: ["GSDE_PROJECT_DIR": project.path])),
+            processLauncher: launcher,
+            readinessChecker: ImmediateReadinessChecker()
+        )
+        let executableURL = URL(fileURLWithPath: "/tmp/fake-code-server")
+
+        let left = try await manager.start(CodeServerStartRequest(
+            paneID: "editor.left",
+            configSource: .projectDefault(configURL),
+            executableURL: executableURL,
+            readinessTimeout: 1
+        ))
+        let right = try await manager.start(CodeServerStartRequest(
+            paneID: "editor.right",
+            configSource: .projectDefault(configURL),
+            executableURL: executableURL,
+            readinessTimeout: 1
+        ))
+
+        #expect(left.serverURL != right.serverURL)
+        #expect(left.password != right.password)
+        #expect(left.launchConfiguration.stateDirectories.paneStateDirectory != right.launchConfiguration.stateDirectories.paneStateDirectory)
+        #expect(left.launchConfiguration.stateDirectories.cefCacheDirectory != right.launchConfiguration.stateDirectories.cefCacheDirectory)
+        #expect(launcher.launchedConfigurations.map(\.stateDirectories.paneID) == ["editor.left", "editor.right"])
+        #expect(await manager.status(forPaneID: "editor.left") != nil)
+        #expect(await manager.status(forPaneID: "editor.right") != nil)
+    }
+
     @Test("rejects duplicate starts until the pane is stopped")
     func rejectsDuplicateStartsUntilStopped() async throws {
         let project = try temporaryDirectory()

@@ -105,6 +105,8 @@ web: npm run dev
 
 Browser storage is persisted beside the resolved config file using CEF's global browser profile. For project configs, all browser panes share `.config/gsde/chromium/Default` in the project directory. For an explicit `GSDE_CONFIG=/path/to/config.toml`, the shared profile is `/path/to/chromium/Default`. GSDE creates the needed directories automatically. Built-in fallback launches use `~/Library/Application Support/GSDE/Chromium`. The `profile` field is currently accepted for config compatibility, but configured browser panes intentionally share one project profile.
 
+Each configured `vscode` pane is isolated by pane ID. GSDE launches a separate code-server lifecycle with its own random port, password token, user data directory, extensions directory, and CEF browser profile under `chromium/vscode-panes/<pane-id>`.
+
 Panes can optionally define CSS-style pixel border and padding shorthands. Defaults can be set by pane kind and overridden per pane:
 
 ```toml
