@@ -262,6 +262,8 @@ struct gsde_chromium_browser {
     int destroy_requested;
 };
 
+static cef_frame_t *main_frame_for_browser(gsde_chromium_browser_t *browser);
+
 static gsde_chromium_browser_t *browser_from_client(cef_client_t *client) {
     return (gsde_chromium_browser_t *)((char *)client - offsetof(gsde_chromium_browser_t, client));
 }
@@ -1187,7 +1189,7 @@ void gsde_chromium_browser_load_url(gsde_chromium_browser_t *browser, const char
 #if GSDE_HAVE_CEF_HEADERS
     if (!browser || !browser->browser || !url) return;
     snprintf(browser->current_url, sizeof(browser->current_url), "%s", url);
-    cef_frame_t *frame = browser->browser->get_main_frame(browser->browser);
+    cef_frame_t *frame = main_frame_for_browser(browser);
     if (!frame) return;
     cef_string_t cef_url;
     memset(&cef_url, 0, sizeof(cef_url));
@@ -1337,12 +1339,24 @@ static cef_frame_t *main_frame_for_browser(gsde_chromium_browser_t *browser) {
 #endif
 }
 
-void gsde_chromium_browser_cut(gsde_chromium_browser_t *browser) {
 #if GSDE_HAVE_CEF_HEADERS
+static void with_main_frame(gsde_chromium_browser_t *browser, void (*action)(cef_frame_t *frame)) {
     cef_frame_t *frame = main_frame_for_browser(browser);
     if (!frame) return;
-    if (frame->cut) frame->cut(frame);
+    action(frame);
     if (frame->base.release) frame->base.release((cef_base_ref_counted_t *)frame);
+}
+
+static void frame_cut(cef_frame_t *frame) { if (frame->cut) frame->cut(frame); }
+static void frame_copy(cef_frame_t *frame) { if (frame->copy) frame->copy(frame); }
+static void frame_paste(cef_frame_t *frame) { if (frame->paste) frame->paste(frame); }
+static void frame_select_all(cef_frame_t *frame) { if (frame->select_all) frame->select_all(frame); }
+static void frame_view_source(cef_frame_t *frame) { if (frame->view_source) frame->view_source(frame); }
+#endif
+
+void gsde_chromium_browser_cut(gsde_chromium_browser_t *browser) {
+#if GSDE_HAVE_CEF_HEADERS
+    with_main_frame(browser, frame_cut);
 #else
     (void)browser;
 #endif
@@ -1350,10 +1364,7 @@ void gsde_chromium_browser_cut(gsde_chromium_browser_t *browser) {
 
 void gsde_chromium_browser_copy(gsde_chromium_browser_t *browser) {
 #if GSDE_HAVE_CEF_HEADERS
-    cef_frame_t *frame = main_frame_for_browser(browser);
-    if (!frame) return;
-    if (frame->copy) frame->copy(frame);
-    if (frame->base.release) frame->base.release((cef_base_ref_counted_t *)frame);
+    with_main_frame(browser, frame_copy);
 #else
     (void)browser;
 #endif
@@ -1361,10 +1372,7 @@ void gsde_chromium_browser_copy(gsde_chromium_browser_t *browser) {
 
 void gsde_chromium_browser_paste(gsde_chromium_browser_t *browser) {
 #if GSDE_HAVE_CEF_HEADERS
-    cef_frame_t *frame = main_frame_for_browser(browser);
-    if (!frame) return;
-    if (frame->paste) frame->paste(frame);
-    if (frame->base.release) frame->base.release((cef_base_ref_counted_t *)frame);
+    with_main_frame(browser, frame_paste);
 #else
     (void)browser;
 #endif
@@ -1372,10 +1380,7 @@ void gsde_chromium_browser_paste(gsde_chromium_browser_t *browser) {
 
 void gsde_chromium_browser_select_all(gsde_chromium_browser_t *browser) {
 #if GSDE_HAVE_CEF_HEADERS
-    cef_frame_t *frame = main_frame_for_browser(browser);
-    if (!frame) return;
-    if (frame->select_all) frame->select_all(frame);
-    if (frame->base.release) frame->base.release((cef_base_ref_counted_t *)frame);
+    with_main_frame(browser, frame_select_all);
 #else
     (void)browser;
 #endif
@@ -1383,10 +1388,7 @@ void gsde_chromium_browser_select_all(gsde_chromium_browser_t *browser) {
 
 void gsde_chromium_browser_view_source(gsde_chromium_browser_t *browser) {
 #if GSDE_HAVE_CEF_HEADERS
-    cef_frame_t *frame = main_frame_for_browser(browser);
-    if (!frame) return;
-    if (frame->view_source) frame->view_source(frame);
-    if (frame->base.release) frame->base.release((cef_base_ref_counted_t *)frame);
+    with_main_frame(browser, frame_view_source);
 #else
     (void)browser;
 #endif
