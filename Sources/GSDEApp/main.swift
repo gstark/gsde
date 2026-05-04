@@ -210,6 +210,18 @@ final class GhosttyHostView: NSView {
 }
 
 final class ThreePaneWorkspaceView: NSSplitView {
+    private enum PaneKind: String, Codable {
+        case terminal
+        case browser
+    }
+
+    private struct PaneDescriptor: Codable {
+        let kind: PaneKind
+        let stateIdentifier: String?
+    }
+
+    private static let paneLayoutDefaultsKey = "GSDE.WorkspacePaneLayout"
+
     private var didSetInitialDividerPositions = false
     private var splitAutosaveName: NSSplitView.AutosaveName {
         NSSplitView.AutosaveName("GSDE.WorkspaceSplit.\(arrangedSubviews.count)")
@@ -226,6 +238,12 @@ final class ThreePaneWorkspaceView: NSSplitView {
     }
 
     private static func makePanes() -> [NSView] {
+        if ProcessInfo.processInfo.environment["GSDE_BROWSER_PANES"] == nil,
+           ProcessInfo.processInfo.environment["GSDE_BROWSER_URLS"] == nil,
+           let savedPanes = makeSavedPanes() {
+            return savedPanes
+        }
+
         let requestedBrowserPanes = ProcessInfo.processInfo.environment["GSDE_BROWSER_PANES"]
             .flatMap(Int.init) ?? 1
         let browserPaneCount = min(max(requestedBrowserPanes, 1), 4)
@@ -260,6 +278,35 @@ final class ThreePaneWorkspaceView: NSSplitView {
         return panes
     }
 
+    private static func makeSavedPanes() -> [NSView]? {
+        guard let data = UserDefaults.standard.data(forKey: paneLayoutDefaultsKey),
+              let descriptors = try? JSONDecoder().decode([PaneDescriptor].self, from: data),
+              !descriptors.isEmpty
+        else { return nil }
+
+        let panes = descriptors.compactMap { descriptor -> NSView? in
+            switch descriptor.kind {
+            case .terminal:
+                return GhosttyHostView()
+            case .browser:
+                guard let stateIdentifier = descriptor.stateIdentifier else { return nil }
+                let savedURL = UserDefaults.standard.string(forKey: "GSDE.BrowserPane.\(stateIdentifier).url")
+                let url = savedURL.flatMap(URL.init(string:)) ?? URL(string: "https://example.com")!
+                let profile = BrowserProfileConfig(
+                    name: stateIdentifier,
+                    storageDirectory: FileManager.default.urls(
+                        for: .applicationSupportDirectory,
+                        in: .userDomainMask
+                    ).first?.appendingPathComponent("GSDE/Chromium/Profiles/\(stateIdentifier)", isDirectory: true),
+                    persistent: true
+                )
+                return BrowserPaneView(profile: profile, stateIdentifier: stateIdentifier, initialURL: url)
+            }
+        }
+
+        return panes.isEmpty ? nil : panes
+    }
+
     private func commonInit(initialPanes: [NSView]) {
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
@@ -281,6 +328,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
 
     func addTerminalPane() {
         addPane(GhosttyHostView())
+        persistPaneLayout()
         distributePanesEvenly()
     }
 
@@ -295,6 +343,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
             persistent: true
         )
         addPane(BrowserPaneView(profile: profile, stateIdentifier: stateIdentifier, initialURL: URL(string: "https://example.com")!))
+        persistPaneLayout()
         distributePanesEvenly()
     }
 
@@ -302,6 +351,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
         guard arrangedSubviews.count > 1, let pane = activeArrangedPane else { return }
         removeArrangedSubview(pane)
         pane.removeFromSuperview()
+        persistPaneLayout()
         distributePanesEvenly()
     }
 
@@ -315,6 +365,26 @@ final class ThreePaneWorkspaceView: NSSplitView {
         addArrangedSubview(pane)
         setHoldingPriority(.defaultLow, forSubviewAt: arrangedSubviews.count - 1)
         autosaveName = splitAutosaveName
+    }
+
+    private func persistPaneLayout() {
+        let descriptors = arrangedSubviews.compactMap { pane -> PaneDescriptor? in
+            if pane is GhosttyHostView {
+                return PaneDescriptor(kind: .terminal, stateIdentifier: nil)
+            }
+            if let browserPane = pane as? BrowserPaneView {
+                return PaneDescriptor(kind: .browser, stateIdentifier: browserPane.stateIdentifierForPersistence)
+            }
+            if pane.subviews.contains(where: { $0 is GhosttyHostView }) {
+                return PaneDescriptor(kind: .terminal, stateIdentifier: nil)
+            }
+            if let browserPane = pane.subviews.compactMap({ $0 as? BrowserPaneView }).first {
+                return PaneDescriptor(kind: .browser, stateIdentifier: browserPane.stateIdentifierForPersistence)
+            }
+            return nil
+        }
+        guard let data = try? JSONEncoder().encode(descriptors) else { return }
+        UserDefaults.standard.set(data, forKey: Self.paneLayoutDefaultsKey)
     }
 
     private func distributePanesEvenly() {
@@ -551,6 +621,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for browserIndex in 0..<4 {
             UserDefaults.standard.removeObject(forKey: "GSDE.BrowserPane.browser.\(browserIndex).url")
         }
+        UserDefaults.standard.removeObject(forKey: "GSDE.WorkspacePaneLayout")
+        UserDefaults.standard.removeObject(forKey: "GSDE.BrowserPane.nextDynamicIndex")
         let frame = Self.frameCoveringAllDisplays()
         window?.setFrame(frame, display: true, animate: true)
         (window?.contentView as? ThreePaneWorkspaceView)?.resetDividerPositions()

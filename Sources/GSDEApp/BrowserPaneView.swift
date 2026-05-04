@@ -84,6 +84,8 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
 
     override var acceptsFirstResponder: Bool { true }
 
+    var stateIdentifierForPersistence: String? { stateIdentifier }
+
     private static var cefRequested: Bool {
         ProcessInfo.processInfo.environment["GSDE_ENABLE_CEF"] == "1"
     }
