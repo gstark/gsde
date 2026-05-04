@@ -208,6 +208,9 @@ final class GhosttyHostView: NSView {
 final class ThreePaneWorkspaceView: NSSplitView {
     private let panes: [NSView]
     private var didSetInitialDividerPositions = false
+    private var splitAutosaveName: NSSplitView.AutosaveName {
+        NSSplitView.AutosaveName("GSDE.WorkspaceSplit.\(panes.count)")
+    }
 
     override init(frame frameRect: NSRect) {
         self.panes = Self.makePanes()
@@ -252,6 +255,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
         isVertical = true
         dividerStyle = .thin
         autoresizesSubviews = true
+        autosaveName = splitAutosaveName
 
         panes.forEach { pane in
             addArrangedSubview(pane)
@@ -263,9 +267,14 @@ final class ThreePaneWorkspaceView: NSSplitView {
         super.layout()
         guard !didSetInitialDividerPositions, bounds.width > 0, panes.count > 1 else { return }
         didSetInitialDividerPositions = true
+        guard !hasSavedDividerPositions else { return }
         for index in 1..<panes.count {
             setPosition(bounds.width * CGFloat(index) / CGFloat(panes.count), ofDividerAt: index - 1)
         }
+    }
+
+    private var hasSavedDividerPositions: Bool {
+        UserDefaults.standard.object(forKey: "NSSplitView Subview Frames \(splitAutosaveName)") != nil
     }
 }
 
