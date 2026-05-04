@@ -432,6 +432,12 @@ final class ThreePaneWorkspaceView: NSSplitView {
         let stateIdentifier: String?
     }
 
+    private struct WorkspaceLayout: Codable {
+        let version: Int
+        let panes: [PaneDescriptor]
+    }
+
+    private static let paneLayoutVersion = 1
     private static let paneLayoutDefaultsKey = "GSDE.WorkspacePaneLayout"
 
     private var didSetInitialDividerPositions = false
@@ -492,7 +498,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
 
     private static func makeSavedPanes() -> [NSView]? {
         guard let data = UserDefaults.standard.data(forKey: paneLayoutDefaultsKey),
-              let descriptors = try? JSONDecoder().decode([PaneDescriptor].self, from: data),
+              let descriptors = decodeSavedPaneDescriptors(from: data),
               !descriptors.isEmpty
         else { return nil }
 
@@ -517,6 +523,18 @@ final class ThreePaneWorkspaceView: NSSplitView {
         }
 
         return panes.isEmpty ? nil : panes
+    }
+
+    private static func decodeSavedPaneDescriptors(from data: Data) -> [PaneDescriptor]? {
+        let decoder = JSONDecoder()
+        if let layout = try? decoder.decode(WorkspaceLayout.self, from: data),
+           layout.version == paneLayoutVersion {
+            return layout.panes
+        }
+
+        // Backward compatibility with the original persisted format, which was
+        // just an array of pane descriptors without an envelope/version.
+        return try? decoder.decode([PaneDescriptor].self, from: data)
     }
 
     private func commonInit(initialPanes: [NSView]) {
@@ -656,7 +674,8 @@ final class ThreePaneWorkspaceView: NSSplitView {
             }
             return nil
         }
-        guard let data = try? JSONEncoder().encode(descriptors) else { return }
+        let layout = WorkspaceLayout(version: Self.paneLayoutVersion, panes: descriptors)
+        guard let data = try? JSONEncoder().encode(layout) else { return }
         UserDefaults.standard.set(data, forKey: Self.paneLayoutDefaultsKey)
     }
 
