@@ -147,7 +147,7 @@ private final class LayoutSwitcherView: NSView {
             ]
         )
 
-        let subtitle = "⌃⌥⌘L · ↑/↓ or j/k · Return to activate · Esc to close"
+        let subtitle = "⇧⌃⌥⌘L · ↑/↓ or j/k · Return to activate · Esc to close"
         subtitle.draw(
             in: NSRect(x: horizontalInset, y: 48, width: bounds.width - horizontalInset * 2, height: 18),
             withAttributes: [
@@ -281,7 +281,7 @@ private final class LayoutFlashView: NSView {
             ]
         )
 
-        "Ctrl-Option-Command-Left/Right".draw(
+        "Shift-Ctrl-Option-Command-Left/Right".draw(
             in: NSRect(x: 24, y: 108, width: bounds.width - 48, height: 18),
             withAttributes: [
                 .font: NSFont.systemFont(ofSize: 12),

@@ -125,7 +125,7 @@ Examples:
   ```
 
 - `docs/sample-configs/browser-terminal-dev.toml`: terminals on the left, one browser spanning the full right column.
-- `docs/sample-configs/multiple-named-layouts.toml`: more than one validated layout, with `startup_layout` selecting the one opened initially. Use **Workspace → Switch Layout…**, `Ctrl-Option-Command-L`, `Globe-L`, or `F13` then `L` to open the layout switcher. Arrow keys or `j`/`k` move through the list, Return activates the selected layout, and Escape closes without changing. Use `Ctrl-Option-Command-Left`/`Right`, `Globe-Left`/`Right`, or `F13` then `Left`/`Right` to switch directly to the previous or next layout. Remap Caps Lock to Globe in System Settings or to F13 at the key-remapping layer to use the physical Caps Lock key as GSDE's layout meta key.
+- `docs/sample-configs/multiple-named-layouts.toml`: more than one validated layout, with `startup_layout` selecting the one opened initially. Use **Workspace → Switch Layout…** or `Shift-Ctrl-Option-Command-L` to open the layout switcher. Arrow keys or `j`/`k` move through the list, Return activates the selected layout, and Escape closes without changing. Use `Shift-Ctrl-Option-Command-Left`/`Right` to switch directly to the previous or next layout.
 
 ## Validation rules
 

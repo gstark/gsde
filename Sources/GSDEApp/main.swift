@@ -1081,7 +1081,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var window: NSWindow?
     private var chromiumMessageLoopTimer: Timer?
     private var layoutSwitcherKeyMonitor: Any?
-    private var f13MetaActiveUntil = Date.distantPast
     private var layoutSwitcherPanel: LayoutSwitcherPanel?
     private var layoutFlashPanels: [LayoutFlashPanel] = []
     private weak var responderBeforeLayoutSwitcher: NSResponder?
@@ -1161,25 +1160,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         guard layoutSwitcherKeyMonitor == nil else { return }
         layoutSwitcherKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
-            if event.keyCode == 105 {
-                self.f13MetaActiveUntil = Date().addingTimeInterval(1.0)
-                return nil
-            }
-            if self.isLayoutSwitcherShortcut(event)
-                || self.isF13MetaLayoutShortcut(event, keyCode: 37)
-                || self.isGlobeMetaLayoutShortcut(event, keyCodes: [37]) {
+            if self.isLayoutSwitcherShortcut(event) {
                 self.showLayoutSwitcher(nil)
                 return nil
             }
-            if self.isLayoutStepShortcut(event, keyCode: 123)
-                || self.isF13MetaLayoutShortcut(event, keyCode: 123)
-                || self.isGlobeMetaLayoutShortcut(event, keyCodes: [123, 115]) {
+            if self.isLayoutStepShortcut(event, keyCode: 123) {
                 self.switchToPreviousLayout(nil)
                 return nil
             }
-            if self.isLayoutStepShortcut(event, keyCode: 124)
-                || self.isF13MetaLayoutShortcut(event, keyCode: 124)
-                || self.isGlobeMetaLayoutShortcut(event, keyCodes: [124, 119]) {
+            if self.isLayoutStepShortcut(event, keyCode: 124) {
                 self.switchToNextLayout(nil)
                 return nil
             }
@@ -1197,18 +1186,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private func isLayoutShortcut(_ event: NSEvent, keyCode: UInt16) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let requiredFlags: NSEvent.ModifierFlags = [.command, .option, .control]
-        return flags.isSuperset(of: requiredFlags) && event.keyCode == keyCode
+        return flags == [.command, .option, .control, .shift] && event.keyCode == keyCode
     }
 
-    private func isF13MetaLayoutShortcut(_ event: NSEvent, keyCode: UInt16) -> Bool {
-        event.keyCode == keyCode && Date() <= f13MetaActiveUntil
-    }
 
-    private func isGlobeMetaLayoutShortcut(_ event: NSEvent, keyCodes: Set<UInt16>) -> Bool {
-        event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.function)
-            && keyCodes.contains(event.keyCode)
-    }
 
     private func initializeChromiumIfAvailable() {
         guard gsde_chromium_cef_available() != 0 else { return }
@@ -1331,9 +1312,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         workspaceMenu.addItem(.separator())
         addMenuItem("Focus Next Pane", #selector(focusNextPane(_:)), "}", to: workspaceMenu)
         addMenuItem("Focus Previous Pane", #selector(focusPreviousPane(_:)), "{", to: workspaceMenu)
-        addMenuItem("Switch Layout…", #selector(showLayoutSwitcher(_:)), "l", modifiers: [.command, .option, .control], to: workspaceMenu)
-        addMenuItem("Previous Layout", #selector(switchToPreviousLayout(_:)), String(UnicodeScalar(NSLeftArrowFunctionKey)!), modifiers: [.command, .option, .control], to: workspaceMenu)
-        addMenuItem("Next Layout", #selector(switchToNextLayout(_:)), String(UnicodeScalar(NSRightArrowFunctionKey)!), modifiers: [.command, .option, .control], to: workspaceMenu)
+        addMenuItem("Switch Layout…", #selector(showLayoutSwitcher(_:)), "l", modifiers: [.command, .option, .control, .shift], to: workspaceMenu)
+        addMenuItem("Previous Layout", #selector(switchToPreviousLayout(_:)), String(UnicodeScalar(NSLeftArrowFunctionKey)!), modifiers: [.command, .option, .control, .shift], to: workspaceMenu)
+        addMenuItem("Next Layout", #selector(switchToNextLayout(_:)), String(UnicodeScalar(NSRightArrowFunctionKey)!), modifiers: [.command, .option, .control, .shift], to: workspaceMenu)
         addMenuItem("Move Pane Left", #selector(moveActivePaneLeft(_:)), "{", modifiers: [.command, .shift], to: workspaceMenu)
         addMenuItem("Move Pane Right", #selector(moveActivePaneRight(_:)), "}", modifiers: [.command, .shift], to: workspaceMenu)
         workspaceMenu.addItem(.separator())
