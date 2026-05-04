@@ -210,6 +210,35 @@ struct WorkspaceConfigTests {
             try CodeServerLaunchBuilder(bindHost: "127.0.0.1/invalid", stateResolver: VSCodePaneStateResolver(environment: [:]))
                 .configuration(executableURL: executableURL, paneID: "editor", configSource: .environment(configURL), port: 3000, password: "secret")
         }
+        #expect(throws: VSCodePaneLaunchError.invalidBindHost("127.0.0.1:3000")) {
+            try CodeServerLaunchBuilder(bindHost: "127.0.0.1:3000", stateResolver: VSCodePaneStateResolver(environment: [:]))
+                .configuration(executableURL: executableURL, paneID: "editor", configSource: .environment(configURL), port: 3000, password: "secret")
+        }
+        #expect(throws: VSCodePaneLaunchError.invalidBindHost("not:ipv6:host")) {
+            try CodeServerLaunchBuilder(bindHost: "not:ipv6:host", stateResolver: VSCodePaneStateResolver(environment: [:]))
+                .configuration(executableURL: executableURL, paneID: "editor", configSource: .environment(configURL), port: 3000, password: "secret")
+        }
+    }
+
+    @Test("code-server launch supports IPv6 bind hosts")
+    func codeServerLaunchSupportsIPv6BindHosts() throws {
+        let project = try temporaryDirectory()
+        let configURL = project.appendingPathComponent(".config/gsde/config.toml")
+        let builder = CodeServerLaunchBuilder(
+            bindHost: "::1",
+            stateResolver: VSCodePaneStateResolver(environment: ["GSDE_PROJECT_DIR": project.path])
+        )
+
+        let launch = try builder.configuration(
+            executableURL: URL(fileURLWithPath: "/bin/code-server"),
+            paneID: "editor",
+            configSource: .projectDefault(configURL),
+            port: 3000,
+            password: "secret"
+        )
+
+        #expect(launch.serverURL.absoluteString == "http://[::1]:3000/")
+        #expect(launch.arguments.prefix(2) == ["--bind-addr", "[::1]:3000"])
     }
 
     @Test("vscode pane state directories are created")

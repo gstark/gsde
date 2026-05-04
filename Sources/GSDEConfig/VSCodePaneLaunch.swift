@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 public enum VSCodePaneLaunchError: Error, Equatable, CustomStringConvertible {
@@ -181,10 +182,22 @@ public struct CodeServerLaunchBuilder: Sendable {
         guard !normalizedHost.isEmpty,
               normalizedHost.rangeOfCharacter(from: .whitespacesAndNewlines) == nil,
               !normalizedHost.contains("/"),
-              !normalizedHost.contains("[") && !normalizedHost.contains("]") else {
+              !normalizedHost.contains("[") && !normalizedHost.contains("]"),
+              Self.isValidHostShape(normalizedHost) else {
             throw VSCodePaneLaunchError.invalidBindHost(host)
         }
         return normalizedHost
+    }
+
+    private static func isValidHostShape(_ host: String) -> Bool {
+        let colonCount = host.reduce(0) { count, character in
+            character == ":" ? count + 1 : count
+        }
+        guard colonCount > 0 else { return true }
+        guard colonCount != 1 else { return false }
+
+        var address = in6_addr()
+        return host.withCString { inet_pton(AF_INET6, $0, &address) == 1 }
     }
 
     private static func bindAddress(host: String, port: UInt16) -> String {
@@ -195,7 +208,7 @@ public struct CodeServerLaunchBuilder: Sendable {
     private static func serverURL(host: String, port: UInt16) throws -> URL {
         var components = URLComponents()
         components.scheme = "http"
-        components.host = host
+        components.host = host.contains(":") ? "[\(host)]" : host
         components.port = Int(port)
         components.path = "/"
         guard let url = components.url else {
