@@ -1,6 +1,6 @@
 cask "gsde" do
-  version "0.1.12"
-  sha256 "6c4a26dc6ce5d1ff8fa739bf0300562715a1117c6803c83fe623c032309aa0f2"
+  version "0.1.13"
+  sha256 "2bda1ac731099892d81b7f3f0510d6d21d326bdd2615f4c2378eaa132383eb2b"
 
   url "https://github.com/gstark/gsde/releases/download/v#{version}/GSDE-#{version}.zip"
   name "GSDE"
@@ -15,6 +15,6 @@ cask "gsde" do
   caveats <<~EOS
     If you installed the earlier formula-based GSDE package, remove it first:
       brew uninstall --formula gsde 2>/dev/null || true
-      rm -f "$(brew --prefix)/bin/gsde"
+      rm -f "/opt/homebrew/bin/gsde"
   EOS
 end
