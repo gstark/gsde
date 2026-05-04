@@ -83,6 +83,13 @@ make verify-cef          # CEF bundle checks plus all CEF smoke tests
 make verify              # default smoke plus all CEF verification
 ```
 
+Create a distributable zip archive under `dist/`:
+
+```sh
+make release        # unsigned archive
+make release-adhoc  # ad-hoc codesign before archiving
+```
+
 Reset saved app state and Chromium profile data:
 
 ```sh
