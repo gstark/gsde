@@ -12,6 +12,12 @@ make app
 APP_VERSION=0.2.0 APP_BUILD=42 make app
 ```
 
+The app icon is generated at `Resources/GSDEIcon.icns`; regenerate it with:
+
+```sh
+./scripts/generate-app-icon.sh
+```
+
 Build Ghostty's embeddable dylib and include it in the app bundle:
 
 ```sh

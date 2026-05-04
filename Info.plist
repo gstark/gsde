@@ -12,6 +12,8 @@
     <string>GSDE</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
+    <key>CFBundleIconFile</key>
+    <string>GSDEIcon</string>
     <key>CFBundleName</key>
     <string>GSDE</string>
     <key>CFBundlePackageType</key>

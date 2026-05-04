@@ -31,6 +31,7 @@ app: build
 	mkdir -p $(MACOS_DIR) $(FRAMEWORKS_DIR)
 	cp $(BINARY) $(MACOS_DIR)/$(APP_NAME)
 	cp Info.plist $(CONTENTS_DIR)/Info.plist
+	if [ -f "Resources/GSDEIcon.icns" ]; then cp "Resources/GSDEIcon.icns" $(CONTENTS_DIR)/GSDEIcon.icns; fi
 	/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(APP_VERSION)" $(CONTENTS_DIR)/Info.plist
 	/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(APP_BUILD)" $(CONTENTS_DIR)/Info.plist
 	if [ -n "$$LIBGHOSTTY_PATH" ]; then cp "$$LIBGHOSTTY_PATH" $(FRAMEWORKS_DIR)/libghostty.dylib; elif [ -f "$(BUILT_LIBGHOSTTY)" ]; then cp "$(BUILT_LIBGHOSTTY)" $(FRAMEWORKS_DIR)/libghostty.dylib; fi
