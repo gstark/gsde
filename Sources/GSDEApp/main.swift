@@ -8,6 +8,7 @@ final class GhosttyHostView: NSView {
     private var host: OpaquePointer?
     private var statusLabel: NSTextField?
     private var displayLink: Timer?
+    private var activePaneObserver: NSObjectProtocol?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -35,6 +36,10 @@ final class GhosttyHostView: NSView {
                 gsde_ghostty_host_destroy(host)
                 self.host = nil
             }
+            if let activePaneObserver {
+                NotificationCenter.default.removeObserver(activePaneObserver)
+                self.activePaneObserver = nil
+            }
         }
         super.viewWillMove(toWindow: newWindow)
     }
@@ -50,7 +55,7 @@ final class GhosttyHostView: NSView {
     }
 
     override func becomeFirstResponder() -> Bool {
-        Self.activePane = self
+        markActivePane()
         gsde_ghostty_host_focus(host, true)
         return true
     }
@@ -61,7 +66,7 @@ final class GhosttyHostView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        Self.activePane = self
+        markActivePane()
         window?.makeFirstResponder(self)
         gsde_ghostty_host_focus(host, true)
         super.mouseDown(with: event)
@@ -140,7 +145,10 @@ final class GhosttyHostView: NSView {
     private func commonInit() {
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
+        layer?.borderWidth = 0
+        layer?.cornerRadius = 6
 
+        installActivePaneObserver()
         let label = NSTextField(labelWithString: "Starting libghostty…")
         label.textColor = .secondaryLabelColor
         label.font = .systemFont(ofSize: 18, weight: .medium)
@@ -154,6 +162,30 @@ final class GhosttyHostView: NSView {
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
             label.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, multiplier: 0.8)
         ])
+    }
+
+    private func installActivePaneObserver() {
+        activePaneObserver = NotificationCenter.default.addObserver(
+            forName: .gsdeActivePaneDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let activeObjectID = (notification.object as AnyObject?).map(ObjectIdentifier.init)
+            Task { @MainActor in
+                guard let self else { return }
+                self.setActiveAppearance(activeObjectID == ObjectIdentifier(self))
+            }
+        }
+    }
+
+    private func markActivePane() {
+        Self.activePane = self
+        NotificationCenter.default.post(name: .gsdeActivePaneDidChange, object: self)
+    }
+
+    private func setActiveAppearance(_ active: Bool) {
+        layer?.borderWidth = active ? 2 : 0
+        layer?.borderColor = active ? NSColor.controlAccentColor.cgColor : nil
     }
 
     private func createHostIfNeeded() {

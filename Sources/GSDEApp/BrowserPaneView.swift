@@ -45,6 +45,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     private var webKitPageZoom: CGFloat = 1.0
     private var hasStartedWebKitFallbackLoad = false
     private var pendingInitialURL: URL
+    private var activePaneObserver: NSObjectProtocol?
 
     init(
         frame frameRect: NSRect = .zero,
@@ -108,6 +109,10 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
                 NSEvent.removeMonitor(contextMenuMonitor)
                 self.contextMenuMonitor = nil
             }
+            if let activePaneObserver {
+                NotificationCenter.default.removeObserver(activePaneObserver)
+                self.activePaneObserver = nil
+            }
             if let cefBrowser {
                 gsde_chromium_browser_destroy(cefBrowser)
                 self.cefBrowser = nil
@@ -133,8 +138,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     }
 
     override func becomeFirstResponder() -> Bool {
-        Self.activePane = self
-        updateWindowTitleForActivePane()
+        markActivePane()
         if let cefBrowser {
             gsde_chromium_browser_focus(cefBrowser, 1)
             return true
@@ -150,8 +154,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     }
 
     override func mouseDown(with event: NSEvent) {
-        Self.activePane = self
-        updateWindowTitleForActivePane()
+        markActivePane()
         window?.makeFirstResponder(self)
         if let cefBrowser {
             gsde_chromium_browser_focus(cefBrowser, 1)
@@ -220,8 +223,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     }
 
     private func activateCEFBrowserPane() {
-        Self.activePane = self
-        updateWindowTitleForActivePane()
+        markActivePane()
         window?.makeFirstResponder(self)
         if let cefBrowser {
             gsde_chromium_browser_focus(cefBrowser, 1)
@@ -368,7 +370,10 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     private func commonInit() {
         wantsLayer = true
         layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        layer?.borderWidth = 0
+        layer?.cornerRadius = 6
 
+        installActivePaneObserver()
         configureToolbar()
         configureWebView()
         configureProfileStorageDirectory()
@@ -397,6 +402,31 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             webView.topAnchor.constraint(equalTo: browserContainer.topAnchor),
             webView.bottomAnchor.constraint(equalTo: browserContainer.bottomAnchor)
         ])
+    }
+
+    private func installActivePaneObserver() {
+        activePaneObserver = NotificationCenter.default.addObserver(
+            forName: .gsdeActivePaneDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let activeObjectID = (notification.object as AnyObject?).map(ObjectIdentifier.init)
+            Task { @MainActor in
+                guard let self else { return }
+                self.setActiveAppearance(activeObjectID == ObjectIdentifier(self))
+            }
+        }
+    }
+
+    private func markActivePane() {
+        Self.activePane = self
+        updateWindowTitleForActivePane()
+        NotificationCenter.default.post(name: .gsdeActivePaneDidChange, object: self)
+    }
+
+    private func setActiveAppearance(_ active: Bool) {
+        layer?.borderWidth = active ? 2 : 0
+        layer?.borderColor = active ? NSColor.controlAccentColor.cgColor : nil
     }
 
     private func configureToolbar() {
@@ -528,13 +558,13 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     @objc func browserZoomReset() { zoomReset() }
 
     @objc private func focusURLField() {
-        Self.activePane = self
+        markActivePane()
         window?.makeFirstResponder(urlField)
         urlField.currentEditor()?.selectAll(nil)
     }
 
     @objc private func openFind() {
-        Self.activePane = self
+        markActivePane()
         setFindVisible(true)
         window?.makeFirstResponder(findField)
         findField.currentEditor()?.selectAll(nil)
