@@ -8,7 +8,7 @@ class Gsde < Formula
   depends_on macos: :ventura
 
   def install
-    app = Dir["**/GSDE.app"].first
+    app = Dir["GSDE.app", "**/GSDE.app"].first
     odie "GSDE.app not found in release archive" if app.nil?
     prefix.install app
 
