@@ -40,6 +40,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     private weak var cefNativeView: NSView?
     private var cefStatusTimer: Timer?
     private var keyCommandMonitor: Any?
+    private var contextMenuMonitor: Any?
     private var webKitPageZoom: CGFloat = 1.0
     private var hasStartedWebKitFallbackLoad = false
     private var pendingInitialURL: URL
@@ -95,6 +96,10 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
                 NSEvent.removeMonitor(keyCommandMonitor)
                 self.keyCommandMonitor = nil
             }
+            if let contextMenuMonitor {
+                NSEvent.removeMonitor(contextMenuMonitor)
+                self.contextMenuMonitor = nil
+            }
             if let cefBrowser {
                 gsde_chromium_browser_destroy(cefBrowser)
                 self.cefBrowser = nil
@@ -103,6 +108,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         }
 
         installKeyCommandMonitorIfNeeded()
+        installContextMenuMonitorIfNeeded()
         createCEFBrowserIfPossible()
         if Self.activePane == nil {
             Self.activePane = self
@@ -159,6 +165,18 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         }
     }
 
+    private func installContextMenuMonitorIfNeeded() {
+        guard contextMenuMonitor == nil else { return }
+        contextMenuMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in
+            guard let self,
+                  self.window === event.window,
+                  self.shouldHandleCEFContextMenu(event)
+            else { return event }
+            self.showCEFContextMenu(for: event)
+            return nil
+        }
+    }
+
     private var isFirstResponderInsidePane: Bool {
         guard let responder = window?.firstResponder else { return false }
         if responder === self || responder === urlField { return true }
@@ -166,6 +184,53 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         if responderView.isDescendant(of: self) { return true }
         if let cefNativeView, responderView.isDescendant(of: cefNativeView) { return true }
         return false
+    }
+
+    private func shouldHandleCEFContextMenu(_ event: NSEvent) -> Bool {
+        guard cefBrowser != nil, let cefNativeView else { return false }
+        let point = cefNativeView.convert(event.locationInWindow, from: nil)
+        return cefNativeView.bounds.contains(point)
+    }
+
+    private func showCEFContextMenu(for event: NSEvent) {
+        Self.activePane = self
+        window?.makeFirstResponder(self)
+        if let cefBrowser {
+            gsde_chromium_browser_focus(cefBrowser, 1)
+        }
+
+        let menu = NSMenu(title: "Browser")
+        let backItem = NSMenuItem(title: "Back", action: #selector(goBack), keyEquivalent: "")
+        backItem.target = self
+        backItem.isEnabled = cefBrowser.map { gsde_chromium_browser_can_go_back($0) != 0 } ?? false
+        menu.addItem(backItem)
+
+        let forwardItem = NSMenuItem(title: "Forward", action: #selector(goForward), keyEquivalent: "")
+        forwardItem.target = self
+        forwardItem.isEnabled = cefBrowser.map { gsde_chromium_browser_can_go_forward($0) != 0 } ?? false
+        menu.addItem(forwardItem)
+
+        menu.addItem(.separator())
+        let reloadItem = NSMenuItem(title: "Reload", action: #selector(reload), keyEquivalent: "")
+        reloadItem.target = self
+        menu.addItem(reloadItem)
+
+        let stopItem = NSMenuItem(title: "Stop Loading", action: #selector(stopLoading), keyEquivalent: "")
+        stopItem.target = self
+        stopItem.isEnabled = cefBrowser.map { gsde_chromium_browser_is_loading($0) != 0 } ?? false
+        menu.addItem(stopItem)
+
+        menu.addItem(.separator())
+        let printItem = NSMenuItem(title: "Print…", action: #selector(printPage), keyEquivalent: "")
+        printItem.target = self
+        menu.addItem(printItem)
+
+        let devToolsItem = NSMenuItem(title: "Developer Tools", action: #selector(showDeveloperTools), keyEquivalent: "")
+        devToolsItem.target = self
+        menu.addItem(devToolsItem)
+
+        let targetView = cefNativeView ?? self
+        NSMenu.popUpContextMenu(menu, with: event, for: targetView)
     }
 
     private func handleBrowserKeyCommand(_ event: NSEvent) -> Bool {
@@ -437,7 +502,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         }
     }
 
-    private func printPage() {
+    @objc private func printPage() {
         if let cefBrowser {
             gsde_chromium_browser_print(cefBrowser)
         } else {
