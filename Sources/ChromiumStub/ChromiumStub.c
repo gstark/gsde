@@ -624,6 +624,40 @@ void gsde_chromium_browser_stop_finding(gsde_chromium_browser_t *browser, int cl
 #endif
 }
 
+static void gsde_chromium_browser_zoom(gsde_chromium_browser_t *browser, cef_zoom_command_t command) {
+#if GSDE_HAVE_CEF_HEADERS
+    if (!browser || !browser->browser) return;
+    cef_browser_host_t *host = browser->browser->get_host(browser->browser);
+    if (host && host->zoom) host->zoom(host, command);
+#else
+    (void)browser; (void)command;
+#endif
+}
+
+void gsde_chromium_browser_zoom_in(gsde_chromium_browser_t *browser) {
+#if GSDE_HAVE_CEF_HEADERS
+    gsde_chromium_browser_zoom(browser, CEF_ZOOM_COMMAND_IN);
+#else
+    (void)browser;
+#endif
+}
+
+void gsde_chromium_browser_zoom_out(gsde_chromium_browser_t *browser) {
+#if GSDE_HAVE_CEF_HEADERS
+    gsde_chromium_browser_zoom(browser, CEF_ZOOM_COMMAND_OUT);
+#else
+    (void)browser;
+#endif
+}
+
+void gsde_chromium_browser_zoom_reset(gsde_chromium_browser_t *browser) {
+#if GSDE_HAVE_CEF_HEADERS
+    gsde_chromium_browser_zoom(browser, CEF_ZOOM_COMMAND_RESET);
+#else
+    (void)browser;
+#endif
+}
+
 void gsde_chromium_browser_focus(gsde_chromium_browser_t *browser, int focused) {
 #if GSDE_HAVE_CEF_HEADERS
     if (!browser || !browser->browser) return;

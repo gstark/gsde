@@ -37,6 +37,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     private weak var cefNativeView: NSView?
     private var cefStatusTimer: Timer?
     private var keyCommandMonitor: Any?
+    private var webKitPageZoom: CGFloat = 1.0
     private var hasStartedWebKitFallbackLoad = false
     private var pendingInitialURL: URL
 
@@ -179,6 +180,12 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             goBack()
         case ([.command], "]"):
             goForward()
+        case ([.command], "+"), ([.command], "="):
+            zoomIn()
+        case ([.command], "-"):
+            zoomOut()
+        case ([.command], "0"):
+            zoomReset()
         case ([.command, .option], "i"):
             showDeveloperTools()
         case ([], "\u{1b}"):
@@ -372,6 +379,35 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         } else {
             findInWebView(query: query, forward: forward)
         }
+    }
+
+    private func zoomIn() {
+        if let cefBrowser {
+            gsde_chromium_browser_zoom_in(cefBrowser)
+        } else {
+            setWebKitPageZoom(webKitPageZoom + 0.1)
+        }
+    }
+
+    private func zoomOut() {
+        if let cefBrowser {
+            gsde_chromium_browser_zoom_out(cefBrowser)
+        } else {
+            setWebKitPageZoom(webKitPageZoom - 0.1)
+        }
+    }
+
+    private func zoomReset() {
+        if let cefBrowser {
+            gsde_chromium_browser_zoom_reset(cefBrowser)
+        } else {
+            setWebKitPageZoom(1.0)
+        }
+    }
+
+    private func setWebKitPageZoom(_ zoom: CGFloat) {
+        webKitPageZoom = min(max(zoom, 0.5), 3.0)
+        webView.pageZoom = webKitPageZoom
     }
 
     private func findInWebView(query: String, forward: Bool) {

@@ -32,6 +32,9 @@ void gsde_chromium_browser_reload_ignore_cache(gsde_chromium_browser_t *browser)
 void gsde_chromium_browser_stop(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_find(gsde_chromium_browser_t *browser, const char *query, int forward, int match_case, int find_next);
 void gsde_chromium_browser_stop_finding(gsde_chromium_browser_t *browser, int clear_selection);
+void gsde_chromium_browser_zoom_in(gsde_chromium_browser_t *browser);
+void gsde_chromium_browser_zoom_out(gsde_chromium_browser_t *browser);
+void gsde_chromium_browser_zoom_reset(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_focus(gsde_chromium_browser_t *browser, int focused);
 void gsde_chromium_browser_show_devtools(gsde_chromium_browser_t *browser);
 
