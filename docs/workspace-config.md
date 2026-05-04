@@ -86,7 +86,7 @@ Examples:
   ```
 
 - `docs/sample-configs/browser-terminal-dev.toml`: terminals on the left, one browser spanning the full right column.
-- `docs/sample-configs/multiple-named-layouts.toml`: more than one validated layout, with `startup_layout` selecting the one opened today. The mosaic workspace can also switch to another named layout internally by ID while reusing existing pane views and hiding panes omitted by the target layout; menu and shortcut wiring are intentionally separate UI work.
+- `docs/sample-configs/multiple-named-layouts.toml`: more than one validated layout, with `startup_layout` selecting the one opened initially. Use **Workspace → Switch Layout…** or `Ctrl-Option-Command-L` to open the layout switcher. Arrow keys or `j`/`k` move through the list, Return activates the selected layout, and Escape closes without changing.
 
 ## Validation rules
 

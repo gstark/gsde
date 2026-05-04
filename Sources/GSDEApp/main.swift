@@ -532,6 +532,10 @@ final class MosaicWorkspaceView: NSView {
         preconditionFailure("MosaicWorkspaceView requires a validated workspace config and pane registry")
     }
 
+    var canSwitchLayouts: Bool { config.validatedLayouts.count > 1 }
+    var layoutIDs: [String] { config.validatedLayouts.map(\.id) }
+    var currentLayoutID: String { activeLayoutID }
+
     func applyLayout(id layoutID: String) {
         guard config.validatedLayouts.contains(where: { $0.id == layoutID }) else {
             preconditionFailure("Layout references unknown configured layout ID \(layoutID)")
@@ -560,6 +564,28 @@ final class MosaicWorkspaceView: NSView {
               let firstVisiblePaneID = layout.slots.first?.paneID
         else { return }
         focus(paneRegistry.view(for: firstVisiblePaneID))
+    }
+
+    func layoutSwitcherAnchorFrameInScreen() -> NSRect {
+        if let activePane = activeVisiblePane,
+           let window = activePane.window {
+            return window.convertToScreen(activePane.convert(activePane.bounds, to: nil))
+        }
+        return window?.frame ?? NSScreen.main?.frame ?? bounds
+    }
+
+    private var activeVisiblePane: NSView? {
+        if let browserPane = BrowserPaneView.activePane,
+           !browserPane.isHidden,
+           browserPane.window != nil {
+            return browserPane
+        }
+        if let terminalPane = GhosttyHostView.activePane,
+           !terminalPane.isHidden,
+           terminalPane.window != nil {
+            return terminalPane
+        }
+        return nil
     }
 
     private func focus(_ pane: NSView) {
@@ -982,6 +1008,9 @@ final class BorderlessMainWindow: NSWindow {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var window: NSWindow?
     private var chromiumMessageLoopTimer: Timer?
+    private var layoutSwitcherKeyMonitor: Any?
+    private var layoutSwitcherPanel: LayoutSwitcherPanel?
+    private weak var responderBeforeLayoutSwitcher: NSResponder?
     private var didPrepareChromiumShutdown = false
     private let frameAutosaveName = "GSDE.MainWindow"
 
@@ -989,6 +1018,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSApp.setActivationPolicy(.regular)
         NSApp.presentationOptions = [.hideDock, .hideMenuBar]
         installMainMenu()
+        installLayoutSwitcherShortcutMonitor()
         initializeChromiumIfAvailable()
 
         let frame = Self.frameCoveringAllDisplays()
@@ -1051,6 +1081,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         } else if let focusable = contentView?.subviews.first(where: { $0.acceptsFirstResponder }) {
             contentView?.window?.makeFirstResponder(focusable)
         }
+    }
+
+    private func installLayoutSwitcherShortcutMonitor() {
+        guard layoutSwitcherKeyMonitor == nil else { return }
+        layoutSwitcherKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self,
+                  self.isLayoutSwitcherShortcut(event)
+            else { return event }
+            self.showLayoutSwitcher(nil)
+            return nil
+        }
+    }
+
+    private func isLayoutSwitcherShortcut(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let requiredFlags: NSEvent.ModifierFlags = [.command, .option, .control]
+        return flags.isSuperset(of: requiredFlags) && event.keyCode == 37
     }
 
     private func initializeChromiumIfAvailable() {
@@ -1174,6 +1221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         workspaceMenu.addItem(.separator())
         addMenuItem("Focus Next Pane", #selector(focusNextPane(_:)), "}", to: workspaceMenu)
         addMenuItem("Focus Previous Pane", #selector(focusPreviousPane(_:)), "{", to: workspaceMenu)
+        addMenuItem("Switch Layout…", #selector(showLayoutSwitcher(_:)), "l", modifiers: [.command, .option, .control], to: workspaceMenu)
         addMenuItem("Move Pane Left", #selector(moveActivePaneLeft(_:)), "{", modifiers: [.command, .shift], to: workspaceMenu)
         addMenuItem("Move Pane Right", #selector(moveActivePaneRight(_:)), "}", modifiers: [.command, .shift], to: workspaceMenu)
         workspaceMenu.addItem(.separator())
@@ -1272,6 +1320,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         (window?.contentView as? ThreePaneWorkspaceView)?.moveActivePaneRight()
     }
 
+    @objc private func showLayoutSwitcher(_ sender: Any?) {
+        if layoutSwitcherPanel != nil {
+            dismissLayoutSwitcher(restoreFocus: true)
+            return
+        }
+
+        guard let workspace = window?.contentView as? MosaicWorkspaceView,
+              workspace.canSwitchLayouts
+        else {
+            NSSound.beep()
+            return
+        }
+
+        responderBeforeLayoutSwitcher = window?.firstResponder
+
+        let panel = LayoutSwitcherPanel(
+            layoutIDs: workspace.layoutIDs,
+            activeLayoutID: workspace.currentLayoutID,
+            anchorFrameInScreen: workspace.layoutSwitcherAnchorFrameInScreen(),
+            onSelect: { [weak self, weak workspace] layoutID in
+                workspace?.applyLayout(id: layoutID)
+                self?.dismissLayoutSwitcher(restoreFocus: true)
+            },
+            onCancel: { [weak self] in
+                self?.dismissLayoutSwitcher(restoreFocus: true)
+            }
+        )
+        layoutSwitcherPanel = panel
+        window?.addChildWindow(panel, ordered: .above)
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    private func dismissLayoutSwitcher(restoreFocus: Bool) {
+        guard let panel = layoutSwitcherPanel else { return }
+        window?.removeChildWindow(panel)
+        panel.close()
+        layoutSwitcherPanel = nil
+
+        guard restoreFocus, let window else { return }
+        window.makeKeyAndOrderFront(nil)
+        if let responder = responderBeforeLayoutSwitcher,
+           window.makeFirstResponder(responder) {
+            return
+        }
+        if let workspace = window.contentView as? MosaicWorkspaceView {
+            workspace.focusInitialPane()
+        }
+    }
+
     @objc private func resetWindowAndPaneLayout(_ sender: Any?) {
         UserDefaults.standard.removeObject(forKey: "NSWindow Frame \(frameAutosaveName)")
         for paneCount in 3...6 {
@@ -1289,6 +1386,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        case #selector(showLayoutSwitcher(_:)):
+            return (window?.contentView as? MosaicWorkspaceView)?.canSwitchLayouts ?? false
         case #selector(closeActivePane(_:)):
             return (window?.contentView as? ThreePaneWorkspaceView)?.canCloseActivePane ?? false
         case #selector(terminalCopy(_:)):
