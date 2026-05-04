@@ -154,6 +154,26 @@ struct CodeServerManagerTests {
         #expect(await manager.status(forPaneID: "editor") == nil)
     }
 
+    @Test("HTTP readiness checking propagates cancellation instead of timing out")
+    func httpReadinessCheckingPropagatesCancellation() async throws {
+        let checker = HTTPCodeServerReadinessChecker(pollInterval: 1, requestTimeout: 0.1)
+        let process = AlwaysRunningProcessHandle()
+        let task = Task {
+            try await checker.waitUntilReady(
+                url: URL(string: "http://127.0.0.1:9/")!,
+                process: process,
+                timeout: 30,
+                diagnostics: { CodeServerProcessDiagnostics() }
+            )
+        }
+
+        try await Task.sleep(nanoseconds: 50_000_000)
+        task.cancel()
+        await #expect(throws: CancellationError.self) {
+            try await task.value
+        }
+    }
+
     @Test("records post-readiness crashes for callers to surface")
     func recordsPostReadinessCrashes() async throws {
         let project = try temporaryDirectory()
@@ -216,6 +236,13 @@ private final class RecordingCodeServerLauncher: CodeServerProcessLaunching, @un
         if !stderrOnLaunch.isEmpty { outputHandler(.stderr, stderrOnLaunch) }
         return handle
     }
+}
+
+private final class AlwaysRunningProcessHandle: CodeServerProcessHandle, @unchecked Sendable {
+    var isRunning: Bool { true }
+    var terminationStatus: Int32 { 0 }
+    func terminate() {}
+    func waitUntilExit() {}
 }
 
 private final class RecordingProcessHandle: CodeServerProcessHandle, @unchecked Sendable {

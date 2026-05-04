@@ -127,6 +127,7 @@ public struct HTTPCodeServerReadinessChecker: CodeServerReadinessChecking {
     ) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
+            try Task.checkCancellation()
             if !process.isRunning {
                 throw CodeServerManagerError.processExitedBeforeReady(
                     paneID: "<unknown>",
@@ -134,21 +135,24 @@ public struct HTTPCodeServerReadinessChecker: CodeServerReadinessChecking {
                     diagnostics: diagnostics()
                 )
             }
-            if await responds(at: url) { return }
+            if try await responds(at: url) { return }
             let delay = UInt64(max(pollInterval, 0.01) * 1_000_000_000)
-            try? await Task.sleep(nanoseconds: delay)
+            try await Task.sleep(nanoseconds: delay)
         }
         throw CodeServerManagerError.readinessTimedOut(paneID: "<unknown>", url: url, diagnostics: diagnostics())
     }
 
-    private func responds(at url: URL) async -> Bool {
+    private func responds(at url: URL) async throws -> Bool {
         var request = URLRequest(url: url)
         request.timeoutInterval = requestTimeout
         request.httpMethod = "GET"
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             return (response as? HTTPURLResponse) != nil
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
+            try Task.checkCancellation()
             return false
         }
     }
