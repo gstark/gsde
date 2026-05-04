@@ -1,0 +1,23 @@
+# Terminal-only sample using a 2x2 area grid shaped like 12/33.
+# Pane 3 spans both columns on the bottom row.
+version = 1
+startup_layout = "12-33"
+
+[[panes]]
+id = "1"
+kind = "terminal"
+
+[[panes]]
+id = "2"
+kind = "terminal"
+
+[[panes]]
+id = "3"
+kind = "terminal"
+
+[[layouts]]
+id = "12-33"
+areas = [
+    "1 2",
+    "3 3",
+]

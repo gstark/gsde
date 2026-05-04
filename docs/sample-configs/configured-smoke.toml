@@ -1,0 +1,30 @@
+# Automated smoke-test layout with multiple terminal and browser panes.
+version = 1
+startup_layout = "smoke"
+
+[[panes]]
+id = "terminal.primary"
+kind = "terminal"
+
+[[panes]]
+id = "browser.docs"
+kind = "browser"
+url = "https://example.com"
+profile = "smoke-docs"
+
+[[panes]]
+id = "terminal.logs"
+kind = "terminal"
+
+[[panes]]
+id = "browser.reference"
+kind = "browser"
+url = "https://www.iana.org/domains/reserved"
+profile = "smoke-reference"
+
+[[layouts]]
+id = "smoke"
+areas = [
+    "terminal.primary browser.docs",
+    "terminal.logs    browser.reference",
+]

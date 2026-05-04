@@ -1,0 +1,32 @@
+# Multiple named layouts. GSDE opens startup_layout, and the mosaic workspace
+# can internally switch to another validated layout by id without recreating panes.
+version = 1
+startup_layout = "focus-browser"
+
+[[panes]]
+id = "terminal.main"
+kind = "terminal"
+
+[[panes]]
+id = "terminal.logs"
+kind = "terminal"
+
+[[panes]]
+id = "browser.docs"
+kind = "browser"
+url = "https://developer.apple.com/documentation"
+profile = "docs"
+
+[[layouts]]
+id = "focus-browser"
+areas = [
+    "terminal.main browser.docs browser.docs",
+    "terminal.logs browser.docs browser.docs",
+]
+
+[[layouts]]
+id = "terminal-first"
+areas = [
+    "terminal.main terminal.main browser.docs",
+    "terminal.logs terminal.logs browser.docs",
+]

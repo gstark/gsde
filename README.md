@@ -67,7 +67,9 @@ GSDE_BROWSER_PANES=2 make run-cef
 GSDE_BROWSER_PANES=2 make run-cef-foreground
 ```
 
-`GSDE_BROWSER_PANES` accepts 1-4 browser panes. Each browser pane gets its own persistent Chromium profile directory under `~/Library/Application Support/GSDE/Chromium/Profiles`. Initial browser URLs can be overridden with comma-separated `GSDE_BROWSER_URLS`:
+GSDE loads workspace startup configuration from `GSDE_CONFIG`, then `~/.config/gsde/config.toml`, then the built-in default. Invalid config files do not crash launch; GSDE reports diagnostics on stderr and uses the built-in layout. See [`docs/workspace-config.md`](docs/workspace-config.md) for the TOML format, lookup order, area-grid validation rules, and copyable samples including terminal-only `12/33`, browser+terminal development, and multiple named layouts.
+
+Configured browser panes get persistent Chromium profile directories under `~/Library/Application Support/GSDE/Chromium/Profiles`; the profile name defaults to the pane ID unless `profile` is set. `GSDE_BROWSER_PANES` accepts 1-4 browser panes for smoke-test overrides. Initial browser URLs can be overridden with comma-separated `GSDE_BROWSER_URLS`:
 
 ```sh
 GSDE_BROWSER_PANES=2 \

@@ -1,0 +1,37 @@
+# Four terminals plus one browser laid out as:
+#
+#   1 2 5 5
+#   3 4 5 5
+#
+# Pane 5 is a browser spanning the right half of the workspace.
+version = 1
+startup_layout = "terminals-browser"
+
+[[panes]]
+id = "1"
+kind = "terminal"
+
+[[panes]]
+id = "2"
+kind = "terminal"
+
+[[panes]]
+id = "3"
+kind = "terminal"
+
+[[panes]]
+id = "4"
+kind = "terminal"
+
+[[panes]]
+id = "5"
+kind = "browser"
+url = "http://localhost:5173"
+profile = "browser-5"
+
+[[layouts]]
+id = "terminals-browser"
+areas = [
+    "1 2 5 5",
+    "3 4 5 5",
+]

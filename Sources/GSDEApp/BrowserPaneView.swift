@@ -470,11 +470,18 @@ final class BrowserPaneView: NSView {
     }
 
     private func configureProfileStorageDirectory() {
-        guard profile.persistent, let storageDirectory = profile.storageDirectory else { return }
-        try? FileManager.default.createDirectory(
-            at: storageDirectory,
-            withIntermediateDirectories: true
-        )
+        guard profile.persistent else { return }
+        guard let storageDirectory = profile.storageDirectory else {
+            preconditionFailure("Persistent browser profile \(profile.name) is missing a storage directory")
+        }
+        do {
+            try FileManager.default.createDirectory(
+                at: storageDirectory,
+                withIntermediateDirectories: true
+            )
+        } catch {
+            preconditionFailure("Could not create browser profile directory for \(profile.name) at \(storageDirectory.path): \(error)")
+        }
     }
 
     func load(_ url: URL) {

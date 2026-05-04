@@ -1,0 +1,26 @@
+# Browser + terminal development layout.
+# The browser occupies the full right column; terminals split the left column.
+version = 1
+startup_layout = "dev"
+
+[[panes]]
+id = "terminal.editor"
+kind = "terminal"
+
+[[panes]]
+id = "terminal.logs"
+kind = "terminal"
+
+[[panes]]
+id = "browser.app"
+kind = "browser"
+url = "http://localhost:5173"
+# Optional stable Chromium profile name. If omitted, GSDE uses the pane id.
+profile = "dev-app"
+
+[[layouts]]
+id = "dev"
+areas = [
+    "terminal.editor browser.app",
+    "terminal.logs   browser.app",
+]

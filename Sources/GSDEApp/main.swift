@@ -1,6 +1,7 @@
 import AppKit
 import ChromiumStub
 import GhosttyShim
+import GSDEConfig
 
 final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
     static weak var activePane: GhosttyHostView?
@@ -430,6 +431,160 @@ final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
     }
 }
 
+@MainActor
+final class ConfiguredPaneRegistry {
+    private let definitionsByID: [String: PaneDefinition]
+    private let appSupportDirectory: URL
+    private var viewsByPaneID: [String: NSView] = [:]
+
+    init(
+        config: WorkspaceConfig,
+        appSupportDirectory: URL = ConfiguredPaneRegistry.applicationSupportDirectory()
+    ) {
+        self.definitionsByID = Dictionary(uniqueKeysWithValues: config.panes.map { ($0.id, $0) })
+        self.appSupportDirectory = appSupportDirectory
+    }
+
+    private static func applicationSupportDirectory() -> URL {
+        guard let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            preconditionFailure("Could not resolve the user Application Support directory for configured pane profiles")
+        }
+        return url
+    }
+
+    func view(for paneID: String) -> NSView {
+        if let existingView = viewsByPaneID[paneID] { return existingView }
+        guard let definition = definitionsByID[paneID] else {
+            preconditionFailure("Layout references unknown configured pane ID \(paneID)")
+        }
+        let view = makeView(for: definition)
+        viewsByPaneID[paneID] = view
+        return view
+    }
+
+    func views(for layout: ValidatedMosaicLayout) -> [NSView] {
+        layout.slots.map { view(for: $0.paneID) }
+    }
+
+    func allViews() -> [NSView] {
+        definitionsByID.keys.sorted().map { view(for: $0) }
+    }
+
+    private static func profileDirectoryName(for profileName: String) -> String {
+        var allowedCharacters = CharacterSet.alphanumerics
+        allowedCharacters.insert(charactersIn: "._-")
+        guard let directoryName = profileName.addingPercentEncoding(withAllowedCharacters: allowedCharacters),
+              !directoryName.isEmpty
+        else {
+            preconditionFailure("Could not derive a safe configured browser profile directory name")
+        }
+        if directoryName == "." || directoryName == ".." {
+            return directoryName.replacingOccurrences(of: ".", with: "%2E")
+        }
+        return directoryName
+    }
+
+    private func makeView(for definition: PaneDefinition) -> NSView {
+        switch definition.kind {
+        case .terminal:
+            return GhosttyHostView()
+        case .browser:
+            guard let url = definition.url else {
+                preconditionFailure("Validated browser pane \(definition.id) is missing its URL")
+            }
+            let profileName = definition.profile ?? definition.id
+            let profile = BrowserProfileConfig(
+                name: profileName,
+                storageDirectory: appSupportDirectory
+                    .appendingPathComponent("GSDE", isDirectory: true)
+                    .appendingPathComponent("Chromium", isDirectory: true)
+                    .appendingPathComponent("Profiles", isDirectory: true)
+                    .appendingPathComponent(Self.profileDirectoryName(for: profileName), isDirectory: true),
+                persistent: true
+            )
+            return BrowserPaneView(profile: profile, stateIdentifier: definition.id, initialURL: url)
+        }
+    }
+}
+
+final class MosaicWorkspaceView: NSView {
+    private let config: WorkspaceConfig
+    private let paneRegistry: ConfiguredPaneRegistry
+    private var activeLayoutID: String
+
+    init(
+        frame frameRect: NSRect,
+        config: WorkspaceConfig,
+        paneRegistry: ConfiguredPaneRegistry,
+        activeLayoutID: String
+    ) {
+        self.config = config
+        self.paneRegistry = paneRegistry
+        self.activeLayoutID = activeLayoutID
+        super.init(frame: frameRect)
+        commonInit()
+        applyActiveLayout()
+    }
+
+    required init?(coder: NSCoder) {
+        preconditionFailure("MosaicWorkspaceView requires a validated workspace config and pane registry")
+    }
+
+    func applyLayout(id layoutID: String) {
+        guard config.validatedLayouts.contains(where: { $0.id == layoutID }) else {
+            preconditionFailure("Layout references unknown configured layout ID \(layoutID)")
+        }
+        activeLayoutID = layoutID
+        applyActiveLayout()
+    }
+
+    override func layout() {
+        super.layout()
+        applyActiveLayout()
+    }
+
+    func visiblePaneFrames() -> [MosaicPaneFrame] {
+        guard let layout = config.validatedLayouts.first(where: { $0.id == activeLayoutID }) else {
+            preconditionFailure("Layout references unknown configured layout ID \(activeLayoutID)")
+        }
+        return layout.slots.map { slot in
+            let paneView = paneRegistry.view(for: slot.paneID)
+            return MosaicPaneFrame(paneID: slot.paneID, frame: paneView.frame)
+        }
+    }
+
+    private func commonInit() {
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.cgColor
+        autoresizesSubviews = true
+        paneRegistry.allViews().forEach { paneView in
+            paneView.autoresizingMask = []
+            paneView.isHidden = true
+            addSubview(paneView)
+        }
+    }
+
+    private func applyActiveLayout() {
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        guard let layout = config.validatedLayouts.first(where: { $0.id == activeLayoutID }) else {
+            preconditionFailure("Layout references unknown configured layout ID \(activeLayoutID)")
+        }
+
+        for paneView in paneRegistry.allViews() {
+            paneView.isHidden = true
+        }
+
+        for assignment in MosaicLayoutFrames.frames(for: layout, in: bounds) {
+            let paneView = paneRegistry.view(for: assignment.paneID)
+            if paneView.superview !== self {
+                addSubview(paneView)
+            }
+            paneView.frame = assignment.frame
+            paneView.isHidden = false
+        }
+    }
+}
+
 final class ThreePaneWorkspaceView: NSSplitView {
     private enum PaneKind: String, Codable {
         case terminal
@@ -465,10 +620,13 @@ final class ThreePaneWorkspaceView: NSSplitView {
     }
 
     private static func makePanes() -> [NSView] {
-        if ProcessInfo.processInfo.environment["GSDE_BROWSER_PANES"] == nil,
-           ProcessInfo.processInfo.environment["GSDE_BROWSER_URLS"] == nil,
-           let savedPanes = makeSavedPanes() {
-            return savedPanes
+        let hasLegacyPaneEnvironment = ProcessInfo.processInfo.environment["GSDE_BROWSER_PANES"] != nil
+            || ProcessInfo.processInfo.environment["GSDE_BROWSER_URLS"] != nil
+        guard hasLegacyPaneEnvironment else {
+            if let savedPanes = makeSavedPanes() {
+                return savedPanes
+            }
+            return makeConfiguredPanes(from: .builtIn)
         }
 
         let requestedBrowserPanes = ProcessInfo.processInfo.environment["GSDE_BROWSER_PANES"]
@@ -503,6 +661,13 @@ final class ThreePaneWorkspaceView: NSSplitView {
         }
         panes.append(GhosttyHostView())
         return panes
+    }
+
+    private static func makeConfiguredPanes(from config: WorkspaceConfig) -> [NSView] {
+        guard let startupLayout = config.startupMosaicLayout else { return [GhosttyHostView()] }
+        let registry = ConfiguredPaneRegistry(config: config)
+        let configuredPanes = registry.views(for: startupLayout)
+        return configuredPanes.isEmpty ? [GhosttyHostView()] : configuredPanes
     }
 
     private static func makeSavedPanes() -> [NSView]? {
@@ -791,7 +956,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         initializeChromiumIfAvailable()
 
         let frame = Self.frameCoveringAllDisplays()
-        let contentView = ThreePaneWorkspaceView(frame: NSRect(origin: .zero, size: frame.size))
+        let contentView = Self.makeWorkspaceView(frame: NSRect(origin: .zero, size: frame.size))
 
         let window = NSWindow(
             contentRect: frame,
@@ -867,6 +1032,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         ) { _ in
             gsde_chromium_do_message_loop_work()
         }
+    }
+
+    static func makeWorkspaceView(frame: NSRect) -> NSView {
+        let hasLegacyPaneEnvironment = ProcessInfo.processInfo.environment["GSDE_BROWSER_PANES"] != nil
+            || ProcessInfo.processInfo.environment["GSDE_BROWSER_URLS"] != nil
+        guard !hasLegacyPaneEnvironment else {
+            logConfig("GSDE_BROWSER_PANES/GSDE_BROWSER_URLS set; skipping TOML workspace config and using ThreePane workspace")
+            return ThreePaneWorkspaceView(frame: frame)
+        }
+
+        let loadedConfig = WorkspaceConfigLoader().load()
+        for diagnostic in loadedConfig.diagnostics {
+            logConfig("\(diagnostic)")
+        }
+
+        let hasConfigErrors = loadedConfig.diagnostics.contains { $0.severity == .error }
+        guard !hasConfigErrors else {
+            logConfig("workspace config failed validation or parsing; falling back to ThreePane workspace")
+            return ThreePaneWorkspaceView(frame: frame)
+        }
+        guard loadedConfig.source != .builtIn else {
+            logConfig("no TOML workspace config found; using ThreePane workspace")
+            return ThreePaneWorkspaceView(frame: frame)
+        }
+        guard let startupLayout = loadedConfig.config.startupMosaicLayout else {
+            preconditionFailure("Validated workspace config is missing startup layout \(loadedConfig.config.startupLayout)")
+        }
+
+        if let configURL = loadedConfig.source.url {
+            logConfig("loaded TOML workspace config from \(configURL.path); using Mosaic workspace layout \(startupLayout.id)")
+        }
+        let registry = ConfiguredPaneRegistry(config: loadedConfig.config)
+        return MosaicWorkspaceView(
+            frame: frame,
+            config: loadedConfig.config,
+            paneRegistry: registry,
+            activeLayoutID: startupLayout.id
+        )
+    }
+
+    private static func logConfig(_ message: String) {
+        FileHandle.standardError.write(Data("GSDE config: \(message)\n".utf8))
     }
 
     private static func frameCoveringAllDisplays() -> NSRect {
@@ -1095,7 +1302,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc private func browserShowDeveloperTools(_ sender: Any?) { activeBrowserPane?.browserShowDeveloperTools() }
 }
 
-let app = NSApplication.shared
-let delegate = AppDelegate()
-app.delegate = delegate
-app.run()
+if ProcessInfo.processInfo.environment["GSDE_VERIFY_WORKSPACE_STARTUP"] != nil {
+    let workspaceView = AppDelegate.makeWorkspaceView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+    print(String(describing: type(of: workspaceView)))
+} else if let rawSize = ProcessInfo.processInfo.environment["GSDE_VERIFY_MOSAIC_LAYOUT"] {
+    let parts = rawSize.split(separator: "x").compactMap { Double($0) }
+    guard parts.count == 2 else {
+        fatalError("GSDE_VERIFY_MOSAIC_LAYOUT must be WIDTHxHEIGHT")
+    }
+    let loadedConfig = WorkspaceConfigLoader().load()
+    guard loadedConfig.diagnostics.isEmpty else {
+        fatalError("GSDE config diagnostics blocked mosaic verification: \(loadedConfig.diagnostics)")
+    }
+    guard let startupLayout = loadedConfig.config.startupMosaicLayout else {
+        fatalError("GSDE config has no startup layout to verify")
+    }
+    let frame = NSRect(x: 0, y: 0, width: parts[0], height: parts[1])
+    let paneRegistry = ConfiguredPaneRegistry(config: loadedConfig.config)
+    let workspaceView = MosaicWorkspaceView(
+        frame: frame,
+        config: loadedConfig.config,
+        paneRegistry: paneRegistry,
+        activeLayoutID: startupLayout.id
+    )
+    workspaceView.layoutSubtreeIfNeeded()
+
+    if let targetLayoutID = ProcessInfo.processInfo.environment["GSDE_VERIFY_MOSAIC_LAYOUT_SWITCH"] {
+        let originalViewIDs = Dictionary(uniqueKeysWithValues: loadedConfig.config.panes.map { pane in
+            (pane.id, ObjectIdentifier(paneRegistry.view(for: pane.id)))
+        })
+        workspaceView.applyLayout(id: targetLayoutID)
+        workspaceView.layoutSubtreeIfNeeded()
+        print("layout \(targetLayoutID)")
+        for pane in loadedConfig.config.panes {
+            let reusedView = originalViewIDs[pane.id] == ObjectIdentifier(paneRegistry.view(for: pane.id))
+            print("reused \(pane.id) \(reusedView)")
+        }
+    }
+
+    for assignment in workspaceView.visiblePaneFrames() {
+        let frame = assignment.frame
+        print("\(assignment.paneID) \(Int(frame.minX)) \(Int(frame.minY)) \(Int(frame.width)) \(Int(frame.height))")
+    }
+    for pane in loadedConfig.config.panes where paneRegistry.view(for: pane.id).isHidden {
+        print("hidden \(pane.id)")
+    }
+} else {
+    let app = NSApplication.shared
+    let delegate = AppDelegate()
+    app.delegate = delegate
+    app.run()
+}
