@@ -1,6 +1,6 @@
 # Chromium / CEF integration plan
 
-CEF is the intended backend for real Chromium panes. The current `BrowserPaneView` is intentionally isolated behind a native AppKit pane so the layout, URL bar, navigation controls, and multi-pane behavior can be developed before the CEF bridge replaces the WebKit implementation.
+CEF is the browser backend for real Chromium panes. `BrowserPaneView` is isolated behind a native AppKit pane so the layout, URL bar, navigation controls, and multi-pane behavior remain independent from CEF hosting details.
 
 ## Fetch CEF
 
@@ -36,12 +36,12 @@ GSDE Helper (Plugin).app
 GSDE Helper (Renderer).app
 ```
 
-The bridge currently exposes CEF initialization, message loop work, helper process execution, browser creation, native view attachment, navigation, resizing, load/display diagnostics, same-pane popup handling, safe context-menu interception, deterministic permission/auth/certificate cancellation with status logging, basic download handling with status display, edit commands, find with match count status, zoom, print, view source, focus, DevTools entry points, and graceful browser close/shutdown tracking. The CEF backend is opt-in via `GSDE_ENABLE_CEF=1` or `make run-cef`; default app launch uses the WebKit fallback while CEF integration stabilizes.
+The bridge currently exposes CEF initialization, message loop work, helper process execution, browser creation, native view attachment, navigation, resizing, load/display diagnostics, same-pane popup handling, safe context-menu interception, deterministic permission/auth/certificate cancellation with status logging, basic download handling with status display, edit commands, find with match count status, zoom, print, view source, focus, DevTools entry points, and graceful browser close/shutdown tracking. CEF initializes by default during normal app launch.
 
 Current verified CEF paths:
 
 ```text
-make smoke-default       # default launch verifies CEF stays off
+make smoke-default       # default launch verifies CEF loads without opt-in flags
 make smoke-cef           # 2 browser panes load HTTP 200
 make smoke-cef-custom-urls # configured per-pane URLs load HTTP 200
 make smoke-cef-four      # 4 browser panes load HTTP 200
@@ -100,4 +100,4 @@ A complete CEF macOS app normally needs more than the framework:
 - Persistent website data via per-pane Chromium profiles
 - Multiple pane instances
 
-The class should keep the same Swift API when the backend changes from WebKit to CEF.
+The class should keep a stable Swift API while the CEF internals continue to evolve.

@@ -48,7 +48,7 @@ run: app
 
 run-cef: app-with-chromium
 	rm -f "$$HOME/Library/Application Support/GSDE/Chromium/SingletonLock" "$$HOME/Library/Application Support/GSDE/Chromium/SingletonCookie" "$$HOME/Library/Application Support/GSDE/Chromium/SingletonSocket"
-	if [ -n "$$GSDE_BROWSER_URLS" ]; then open -n --env GSDE_ENABLE_CEF=1 --env GSDE_BROWSER_PANES=$${GSDE_BROWSER_PANES:-1} --env GSDE_BROWSER_URLS="$$GSDE_BROWSER_URLS" $(BUNDLE_DIR); else open -n --env GSDE_ENABLE_CEF=1 --env GSDE_BROWSER_PANES=$${GSDE_BROWSER_PANES:-1} $(BUNDLE_DIR); fi
+	if [ -n "$$GSDE_BROWSER_URLS" ]; then open -n --env GSDE_BROWSER_PANES=$${GSDE_BROWSER_PANES:-1} --env GSDE_BROWSER_URLS="$$GSDE_BROWSER_URLS" $(BUNDLE_DIR); else open -n --env GSDE_BROWSER_PANES=$${GSDE_BROWSER_PANES:-1} $(BUNDLE_DIR); fi
 
 run-cef-two-browsers:
 	GSDE_BROWSER_PANES=2 $(MAKE) run-cef
@@ -61,7 +61,7 @@ run-foreground: app
 
 run-cef-foreground: app-with-chromium
 	rm -f "$$HOME/Library/Application Support/GSDE/Chromium/SingletonLock" "$$HOME/Library/Application Support/GSDE/Chromium/SingletonCookie" "$$HOME/Library/Application Support/GSDE/Chromium/SingletonSocket"
-	GSDE_ENABLE_CEF=1 GSDE_BROWSER_PANES=$${GSDE_BROWSER_PANES:-1} $(MACOS_DIR)/$(APP_NAME)
+	GSDE_BROWSER_PANES=$${GSDE_BROWSER_PANES:-1} $(MACOS_DIR)/$(APP_NAME)
 
 smoke-default: app
 	./scripts/smoke-test-default.sh

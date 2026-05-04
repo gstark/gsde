@@ -80,7 +80,7 @@ make run-cef-foreground
 Run CLI smoke tests that launch the app, wait for browser creation and successful page loads, then shut it down:
 
 ```sh
-make smoke-default       # default WebKit launch; verifies CEF stays off
+make smoke-default       # default launch; verifies CEF loads without opt-in flags
 make smoke-cef           # two browser panes
 make smoke-cef-custom-urls # verifies configured per-pane URLs load
 make smoke-cef-four      # four browser panes
@@ -158,13 +158,13 @@ Then run:
 make run
 ```
 
-To run the experimental CEF backend instead of the default WebKit browser fallback:
+Run the Chromium/CEF browser backend:
 
 ```sh
 make run-cef
 ```
 
-If the dylib is not present, the window opens with a centered status message explaining where the app looked.
+CEF is the browser backend by default. If CEF is not bundled, the browser pane shows a status message explaining what is missing.
 
 The shim vendors Ghostty's public C header in `Sources/GhosttyShim/include/ghostty.h`; see `THIRD_PARTY_NOTICES.md`.
 
@@ -172,4 +172,4 @@ The shim vendors Ghostty's public C header in `Sources/GhosttyShim/include/ghost
 
 On first launch, the app opens one native macOS window sized to the union of all connected display frames. Subsequent launches restore the saved window frame, split-pane divider positions, and last browser URLs. Use **GSDE → Reset Window and Pane Layout** to clear saved layout/browser URL state and maximize across all displays again. The content area is split into resizable panes with an accent border around the active pane: terminal, browser(s), terminal. The Workspace menu can add browser panes, add terminal panes after the active pane, duplicate the active browser pane, close the active pane, close all other panes, cycle pane focus, move the active pane left/right, and reset window/pane layout. Runtime pane additions/removals are persisted with a versioned workspace layout and restored on later launches unless launch-time pane environment overrides are provided. Abandoned dynamic browser profiles are cleaned up on launch when they are no longer referenced by the saved workspace.
 
-The Terminal menu provides copy/paste for the active Ghostty pane, Ghostty clipboard callbacks are bridged to macOS `pbpaste`/`pbcopy` for terminal-initiated clipboard operations, and terminal panes forward mouse movement, clicks, drags, scroll events, title changes, mouse shape/visibility state, and basic IME marked/committed text and IME candidate positioning to libghostty. The browser pane currently provides URL entry, back/forward/reload/stop, in-page find with match count status, page zoom, printing, basic download handling with status display, deterministic permission/auth/certificate cancellation with status logging, same-pane popup handling, copy/open current URL actions, a safe native browser context menu with editing actions, persistent website data, and developer tools entry points. These actions are available from the Browser menu. Browser shortcuts include Cmd-L for the URL bar, Cmd-F find, Cmd-G / Cmd-Shift-G find next/previous, Cmd-R reload, Cmd-Shift-R reload ignoring cache, Cmd-. stop loading, Cmd-[ back, Cmd-] forward, Cmd-X/C/V/A editing commands, Cmd-+ / Cmd-- / Cmd-0 zoom, Cmd-P print, Cmd-Option-U view source, and Cmd-Option-I DevTools. By default it uses the WebKit fallback so normal app launch stays stable. The dynamically loaded CEF/Chromium backend is available behind `GSDE_ENABLE_CEF=1` / `make run-cef`; it initializes CEF, creates a native browser view, starts renderer helpers, and loads the initial page.
+The Terminal menu provides copy/paste for the active Ghostty pane, Ghostty clipboard callbacks are bridged to macOS `pbpaste`/`pbcopy` for terminal-initiated clipboard operations, and terminal panes forward mouse movement, clicks, drags, scroll events, title changes, mouse shape/visibility state, and basic IME marked/committed text and IME candidate positioning to libghostty. The browser pane uses Chromium/CEF directly and provides URL entry, back/forward/reload/stop, in-page find with match count status, page zoom, printing, basic download handling with status display, deterministic permission/auth/certificate cancellation with status logging, same-pane popup handling, copy/open current URL actions, a safe native browser context menu with editing actions, persistent website data, and developer tools entry points. These actions are available from the Browser menu. Browser shortcuts include Cmd-L for the URL bar, Cmd-F find, Cmd-G / Cmd-Shift-G find next/previous, Cmd-R reload, Cmd-Shift-R reload ignoring cache, Cmd-. stop loading, Cmd-[ back, Cmd-] forward, Cmd-X/C/V/A editing commands, Cmd-+ / Cmd-- / Cmd-0 zoom, Cmd-P print, Cmd-Option-U view source, and Cmd-Option-I DevTools. The dynamically loaded CEF/Chromium backend initializes on normal app launch, creates native browser views, starts renderer helpers, and loads the initial pages.

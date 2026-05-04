@@ -1,6 +1,5 @@
 import AppKit
 import ChromiumStub
-import WebKit
 
 struct BrowserProfileConfig {
     let name: String
@@ -17,7 +16,7 @@ struct BrowserProfileConfig {
     )
 }
 
-final class BrowserPaneView: NSView, WKNavigationDelegate {
+final class BrowserPaneView: NSView {
     static weak var activePane: BrowserPaneView?
 
     private let profile: BrowserProfileConfig
@@ -35,15 +34,12 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     private let findNextButton = NSButton(title: "↓", target: nil, action: nil)
     private let findCloseButton = NSButton(title: "×", target: nil, action: nil)
     private let browserContainer = NSView()
-    private let webView: WKWebView
     private var cefBrowser: OpaquePointer?
     private weak var cefNativeView: NSView?
     private var cefStatusTimer: Timer?
     private var keyCommandMonitor: Any?
     private var cefMouseFocusMonitor: Any?
     private var contextMenuMonitor: Any?
-    private var webKitPageZoom: CGFloat = 1.0
-    private var hasStartedWebKitFallbackLoad = false
     private var pendingInitialURL: URL
     private var activePaneObserver: NSObjectProtocol?
 
@@ -57,28 +53,16 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         self.stateIdentifier = stateIdentifier
         self.pendingInitialURL = initialURL
 
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = profile.persistent ? .default() : .nonPersistent()
-        configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
-
-        self.webView = WKWebView(frame: .zero, configuration: configuration)
         super.init(frame: frameRect)
 
         commonInit()
-        if Self.cefRequested {
-            urlField.stringValue = initialURL.absoluteString
-        } else {
-            load(initialURL)
-        }
+        urlField.stringValue = initialURL.absoluteString
     }
 
     required init?(coder: NSCoder) {
         self.profile = .default
         self.stateIdentifier = nil
         self.pendingInitialURL = URL(string: "https://www.google.com")!
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .default()
-        self.webView = WKWebView(frame: .zero, configuration: configuration)
         super.init(coder: coder)
         commonInit()
     }
@@ -87,10 +71,6 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
 
     var stateIdentifierForPersistence: String? { stateIdentifier }
     var currentURLForWorkspaceDuplication: URL { currentPageURL ?? pendingInitialURL }
-
-    private static var cefRequested: Bool {
-        ProcessInfo.processInfo.environment["GSDE_ENABLE_CEF"] == "1"
-    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -128,7 +108,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             Self.activePane = self
         }
         if window?.firstResponder == nil {
-            window?.makeFirstResponder(cefBrowser == nil ? webView : browserContainer)
+            window?.makeFirstResponder(browserContainer)
         }
     }
 
@@ -375,16 +355,13 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
 
         installActivePaneObserver()
         configureToolbar()
-        configureWebView()
         configureProfileStorageDirectory()
 
         addSubview(toolbar)
         addSubview(browserContainer)
-        browserContainer.addSubview(webView)
 
         toolbar.translatesAutoresizingMaskIntoConstraints = false
         browserContainer.translatesAutoresizingMaskIntoConstraints = false
-        webView.translatesAutoresizingMaskIntoConstraints = false
 
         NSLayoutConstraint.activate([
             toolbar.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
@@ -395,12 +372,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             browserContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
             browserContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
             browserContainer.topAnchor.constraint(equalTo: toolbar.bottomAnchor, constant: 6),
-            browserContainer.bottomAnchor.constraint(equalTo: bottomAnchor),
-
-            webView.leadingAnchor.constraint(equalTo: browserContainer.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: browserContainer.trailingAnchor),
-            webView.topAnchor.constraint(equalTo: browserContainer.topAnchor),
-            webView.bottomAnchor.constraint(equalTo: browserContainer.bottomAnchor)
+            browserContainer.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
     }
 
@@ -497,18 +469,6 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         updateNavigationButtons()
     }
 
-    private func configureWebView() {
-        webView.navigationDelegate = self
-        webView.allowsBackForwardNavigationGestures = true
-        webView.allowsMagnification = true
-
-        // Enables Safari/WebKit inspector for this view on supported macOS versions.
-        // CEF will replace this with Chromium DevTools when we swap the backend.
-        if webView.responds(to: Selector(("setInspectable:"))) {
-            webView.setValue(true, forKey: "inspectable")
-        }
-    }
-
     private func configureProfileStorageDirectory() {
         guard profile.persistent, let storageDirectory = profile.storageDirectory else { return }
         try? FileManager.default.createDirectory(
@@ -523,9 +483,6 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         saveCurrentURL(url)
         if let cefBrowser {
             url.absoluteString.withCString { gsde_chromium_browser_load_url(cefBrowser, $0) }
-        } else {
-            hasStartedWebKitFallbackLoad = true
-            webView.load(URLRequest(url: url))
         }
     }
 
@@ -575,8 +532,6 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         setFindVisible(false)
         if let cefBrowser {
             gsde_chromium_browser_stop_finding(cefBrowser, 1)
-        } else {
-            webView.evaluateJavaScript("window.getSelection().removeAllRanges()")
         }
         window?.makeFirstResponder(self)
     }
@@ -598,72 +553,54 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         guard !query.isEmpty else { return }
         if let cefBrowser {
             query.withCString { gsde_chromium_browser_find(cefBrowser, $0, forward ? 1 : 0, 0, findNext ? 1 : 0) }
-        } else {
-            findInWebView(query: query, forward: forward)
         }
     }
 
     private func zoomIn() {
         if let cefBrowser {
             gsde_chromium_browser_zoom_in(cefBrowser)
-        } else {
-            setWebKitPageZoom(webKitPageZoom + 0.1)
         }
     }
 
     private func zoomOut() {
         if let cefBrowser {
             gsde_chromium_browser_zoom_out(cefBrowser)
-        } else {
-            setWebKitPageZoom(webKitPageZoom - 0.1)
         }
     }
 
     private func zoomReset() {
         if let cefBrowser {
             gsde_chromium_browser_zoom_reset(cefBrowser)
-        } else {
-            setWebKitPageZoom(1.0)
         }
     }
 
     @objc private func cutSelection() {
         if let cefBrowser {
             gsde_chromium_browser_cut(cefBrowser)
-        } else {
-            NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: self)
         }
     }
 
     @objc private func copySelection() {
         if let cefBrowser {
             gsde_chromium_browser_copy(cefBrowser)
-        } else {
-            NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: self)
         }
     }
 
     @objc private func pasteClipboard() {
         if let cefBrowser {
             gsde_chromium_browser_paste(cefBrowser)
-        } else {
-            NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: self)
         }
     }
 
     @objc private func selectAllContent() {
         if let cefBrowser {
             gsde_chromium_browser_select_all(cefBrowser)
-        } else {
-            NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: self)
         }
     }
 
     @objc private func viewSource() {
         if let cefBrowser {
             gsde_chromium_browser_view_source(cefBrowser)
-        } else {
-            NSSound.beep()
         }
     }
 
@@ -689,37 +626,19 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             let value = String(cString: gsde_chromium_browser_current_url(cefBrowser))
             return URL(string: value)
         }
-        return webView.url ?? URL(string: urlField.stringValue)
+        return URL(string: urlField.stringValue)
     }
 
     @objc private func printPage() {
         if let cefBrowser {
             gsde_chromium_browser_print(cefBrowser)
-        } else {
-            webView.printView(nil)
         }
-    }
-
-    private func setWebKitPageZoom(_ zoom: CGFloat) {
-        webKitPageZoom = min(max(zoom, 0.5), 3.0)
-        webView.pageZoom = webKitPageZoom
-    }
-
-    private func findInWebView(query: String, forward: Bool) {
-        let escaped = query
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
-            .replacingOccurrences(of: "\n", with: "\\n")
-        let script = "window.find('\(escaped)', false, \(!forward), true, false, false, false)"
-        webView.evaluateJavaScript(script)
     }
 
     @objc private func goBack() {
         if let cefBrowser {
             gsde_chromium_browser_go_back(cefBrowser)
             updateNavigationButtons()
-        } else if webView.canGoBack {
-            webView.goBack()
         }
     }
 
@@ -727,8 +646,6 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         if let cefBrowser {
             gsde_chromium_browser_go_forward(cefBrowser)
             updateNavigationButtons()
-        } else if webView.canGoForward {
-            webView.goForward()
         }
     }
 
@@ -739,8 +656,6 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     @objc private func stopLoading() {
         if let cefBrowser {
             gsde_chromium_browser_stop(cefBrowser)
-        } else {
-            webView.stopLoading()
         }
         updateNavigationButtons()
     }
@@ -753,27 +668,19 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
                 gsde_chromium_browser_reload(cefBrowser)
             }
             updateNavigationButtons()
-        } else if ignoringCache {
-            webView.reloadFromOrigin()
-        } else {
-            webView.reload()
         }
     }
 
     @objc private func showDeveloperTools() {
         if let cefBrowser {
             gsde_chromium_browser_show_devtools(cefBrowser)
-        } else if webView.responds(to: Selector(("_showInspector"))) {
-            webView.perform(Selector(("_showInspector")))
-        } else {
-            NSSound.beep()
         }
     }
 
     private func createCEFBrowserIfPossible() {
         guard cefBrowser == nil else { return }
         guard gsde_chromium_cef_available() != 0 else {
-            startWebKitFallbackLoadIfNeeded()
+            backendStatusLabel.stringValue = String(cString: gsde_chromium_backend_status())
             return
         }
         browserContainer.layoutSubtreeIfNeeded()
@@ -794,12 +701,10 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
 
         guard let browser else {
             backendStatusLabel.stringValue = String(cString: gsde_chromium_last_error())
-            startWebKitFallbackLoadIfNeeded()
             return
         }
         cefBrowser = browser
         attachCEFBrowserViewIfAvailable(browser)
-        webView.isHidden = true
         backendStatusLabel.stringValue = String(cString: gsde_chromium_backend_status())
         startCEFStatusPolling()
         let initialURL = pendingInitialURL
@@ -809,19 +714,12 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         }
     }
 
-    private func startWebKitFallbackLoadIfNeeded() {
-        guard !hasStartedWebKitFallbackLoad else { return }
-        hasStartedWebKitFallbackLoad = true
-        webView.isHidden = false
-        webView.load(URLRequest(url: pendingInitialURL))
-    }
-
     private func attachCEFBrowserViewIfAvailable(_ browser: OpaquePointer) {
         guard let rawView = gsde_chromium_browser_view(browser) else { return }
         let nativeView = Unmanaged<NSView>.fromOpaque(rawView).takeUnretainedValue()
         if nativeView.superview !== browserContainer {
             nativeView.removeFromSuperview()
-            browserContainer.addSubview(nativeView, positioned: .above, relativeTo: webView)
+            browserContainer.addSubview(nativeView)
         }
         nativeView.frame = browserContainer.bounds
         nativeView.autoresizingMask = [.width, .height]
@@ -897,29 +795,6 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         return components?.url
     }
 
-    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-        if let url = webView.url {
-            urlField.stringValue = url.absoluteString
-            saveCurrentURL(url)
-        }
-        updateNavigationButtons()
-    }
-
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        if let url = webView.url {
-            urlField.stringValue = url.absoluteString
-            saveCurrentURL(url)
-        }
-        if Self.activePane === self {
-            updateWindowTitleForActivePane(title: webView.title)
-        }
-        updateNavigationButtons()
-    }
-
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        updateNavigationButtons()
-    }
-
     private func updateWindowTitleForActivePane(title: String? = nil) {
         guard Self.activePane === self else { return }
         let cleanTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -947,9 +822,9 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             forwardButton.isEnabled = gsde_chromium_browser_can_go_forward(cefBrowser) != 0
             stopButton.isEnabled = gsde_chromium_browser_is_loading(cefBrowser) != 0
         } else {
-            backButton.isEnabled = webView.canGoBack
-            forwardButton.isEnabled = webView.canGoForward
-            stopButton.isEnabled = webView.isLoading
+            backButton.isEnabled = false
+            forwardButton.isEnabled = false
+            stopButton.isEnabled = false
         }
     }
 }

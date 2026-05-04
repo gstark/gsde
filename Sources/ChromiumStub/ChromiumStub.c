@@ -28,7 +28,7 @@
 static void *cef_handle = NULL;
 static bool attempted_load = false;
 static bool initialized = false;
-static char status[512] = "WebKit fallback backend active; CEF has not been initialized";
+static char status[512] = "CEF has not been initialized";
 static char last_error[512] = "No CEF errors recorded";
 static atomic_int next_browser_id = 1;
 static atomic_int live_browser_count = 0;
@@ -137,26 +137,17 @@ static bool load_cef_framework(void) {
     snprintf(status, sizeof(status), "CEF framework loaded; bridge ready to initialize; API version %d", cef_api_version_ptr());
     return true;
 #else
-    snprintf(status, sizeof(status), "CEF framework found, but CEF headers were not available at compile time; using WebKit fallback");
+    snprintf(status, sizeof(status), "CEF framework found, but CEF headers were not available at compile time");
     return false;
 #endif
 }
 
-static bool cef_enabled_by_environment(void) {
-    const char *enabled = getenv("GSDE_ENABLE_CEF");
-    return enabled && strcmp(enabled, "1") == 0;
-}
-
 const char *gsde_chromium_backend_status(void) {
-    if (!cef_enabled_by_environment()) {
-        return "WebKit fallback backend active; set GSDE_ENABLE_CEF=1 to test CEF";
-    }
     load_cef_framework();
     return status;
 }
 
 int gsde_chromium_cef_available(void) {
-    if (!cef_enabled_by_environment()) return 0;
     return load_cef_framework() ? 1 : 0;
 }
 

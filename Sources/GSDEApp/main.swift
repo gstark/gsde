@@ -841,9 +841,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     private func initializeChromiumIfAvailable() {
-        // Keep CEF opt-in while the native Chromium bridge is still under active
-        // integration. The browser pane remains usable via WebKit fallback.
-        guard ProcessInfo.processInfo.environment["GSDE_ENABLE_CEF"] == "1" else { return }
         guard gsde_chromium_cef_available() != 0 else { return }
 
         let appSupport = FileManager.default.urls(

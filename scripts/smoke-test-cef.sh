@@ -46,7 +46,7 @@ verify_expected_url_substrings() {
   done
 }
 
-GSDE_ENABLE_CEF=1 GSDE_BROWSER_PANES="$BROWSER_PANES" "$APP" >/tmp/gsde-cef-smoke.out 2>/tmp/gsde-cef-smoke.err &
+GSDE_BROWSER_PANES="$BROWSER_PANES" "$APP" >/tmp/gsde-cef-smoke.out 2>/tmp/gsde-cef-smoke.err &
 app_pid=$!
 
 cleanup() {
