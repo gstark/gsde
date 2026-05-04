@@ -13,7 +13,7 @@ CHROMIUM_HELPER_BINARY := .build/$(CONFIG)/$(CHROMIUM_HELPER_PRODUCT)
 BUILT_LIBGHOSTTY := build/libghostty/libghostty.dylib
 CEF_FRAMEWORK := external/cef/Release/Chromium Embedded Framework.framework
 
-.PHONY: build libghostty cef app app-with-ghostty app-with-chromium run run-cef run-cef-two-browsers run-foreground run-cef-foreground smoke-cef clean
+.PHONY: build libghostty cef app app-with-ghostty app-with-chromium run run-cef run-cef-two-browsers run-foreground run-cef-foreground smoke-cef reset-state clean
 
 build:
 	swift build -c $(CONFIG)
@@ -58,6 +58,9 @@ run-cef-foreground: app-with-chromium
 
 smoke-cef: app-with-chromium
 	./scripts/smoke-test-cef.sh
+
+reset-state:
+	./scripts/reset-state.sh
 
 clean:
 	rm -rf .build build

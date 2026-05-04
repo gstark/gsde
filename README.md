@@ -72,6 +72,12 @@ Run a CLI smoke test that launches the app, waits for CEF browser creation and s
 make smoke-cef
 ```
 
+Reset saved app state and Chromium profile data:
+
+```sh
+make reset-state
+```
+
 CEF diagnostics are written to:
 
 ```text
