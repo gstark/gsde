@@ -8,11 +8,8 @@ class Gsde < Formula
   depends_on macos: :ventura
 
   def install
-    app = if File.directory?("GSDE.app")
-      "GSDE.app"
-    else
-      "build/GSDE.app"
-    end
+    app = Dir["**/GSDE.app"].first
+    odie "GSDE.app not found in release archive" if app.nil?
     prefix.install app
 
     (bin/"gsde").write <<~SH
