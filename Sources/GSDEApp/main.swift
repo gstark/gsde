@@ -624,6 +624,7 @@ final class VSCodePaneView: NSView {
     private let configSource: WorkspaceConfigSource
     private let codeServerManager: CodeServerManager
     private var startTask: Task<Void, Never>?
+    private var startTaskID: UUID?
     private var statusTask: Task<Void, Never>?
     private var stopTask: Task<Void, Never>?
     private var stopGeneration = 0
@@ -648,6 +649,7 @@ final class VSCodePaneView: NSView {
             startTask?.cancel()
             statusTask?.cancel()
             startTask = nil
+            startTaskID = nil
             statusTask = nil
             hasStartedSession = false
             stopGeneration += 1
@@ -661,18 +663,28 @@ final class VSCodePaneView: NSView {
         guard startTask == nil, !hasStartedSession else { return }
         let pendingStopTask = stopTask
         let pendingStopGeneration = stopGeneration
+        let taskID = UUID()
+        startTaskID = taskID
         startTask = Task { [weak self, paneID, configSource, codeServerManager] in
             do {
                 await pendingStopTask?.value
                 try Task.checkCancellation()
-                await MainActor.run { [weak self] in
-                    guard let self, stopGeneration == pendingStopGeneration else { return }
+                let shouldStart = await MainActor.run { [weak self] in
+                    guard let self, startTaskID == taskID, stopGeneration == pendingStopGeneration else { return false }
                     stopTask = nil
+                    return true
                 }
+                guard shouldStart else { return }
+
                 let session = try await codeServerManager.start(CodeServerStartRequest(paneID: paneID, configSource: configSource))
                 try Task.checkCancellation()
-                let didEmbed = await MainActor.run { [weak self] in
-                    guard let self, window != nil else { return false }
+                let shouldStopSession = await MainActor.run { [weak self] in
+                    guard let self, startTaskID == taskID else { return false }
+                    guard window != nil else {
+                        startTask = nil
+                        startTaskID = nil
+                        return true
+                    }
                     hasStartedSession = true
                     embed(BrowserPaneView(
                         profile: BrowserProfileConfig(
@@ -685,20 +697,28 @@ final class VSCodePaneView: NSView {
                     ))
                     beginMonitoringSession()
                     startTask = nil
-                    return true
+                    startTaskID = nil
+                    return false
                 }
-                if !didEmbed {
+                if shouldStopSession {
                     await codeServerManager.stop(paneID: paneID)
                 }
             } catch is CancellationError {
-                await codeServerManager.stop(paneID: paneID)
-                await MainActor.run { [weak self] in
-                    self?.startTask = nil
+                let shouldStop = await MainActor.run { [weak self] in
+                    guard let self, startTaskID == taskID else { return false }
+                    startTask = nil
+                    startTaskID = nil
+                    return window == nil
+                }
+                if shouldStop {
+                    await codeServerManager.stop(paneID: paneID)
                 }
             } catch {
                 await MainActor.run { [weak self] in
-                    self?.showStatus(title: "VS Code pane failed", detail: error.localizedDescription)
-                    self?.startTask = nil
+                    guard let self, startTaskID == taskID else { return }
+                    showStatus(title: "VS Code pane failed", detail: error.localizedDescription)
+                    startTask = nil
+                    startTaskID = nil
                 }
             }
         }
