@@ -596,8 +596,12 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
 
         let loading = gsde_chromium_browser_is_loading(cefBrowser) != 0
         let httpStatus = gsde_chromium_browser_http_status(cefBrowser)
-        if loading {
-            backendStatusLabel.stringValue = "CEF loading…"
+        let statusMessage = String(cString: gsde_chromium_browser_status_message(cefBrowser))
+        let progress = gsde_chromium_browser_loading_progress(cefBrowser)
+        if !statusMessage.isEmpty {
+            backendStatusLabel.stringValue = statusMessage
+        } else if loading {
+            backendStatusLabel.stringValue = progress > 0 ? "CEF \(Int(progress * 100))%" : "CEF loading…"
         } else if httpStatus > 0 {
             backendStatusLabel.stringValue = "CEF HTTP \(httpStatus)"
         } else if httpStatus < 0 {
