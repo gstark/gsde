@@ -41,11 +41,13 @@ The bridge currently exposes CEF initialization, message loop work, helper proce
 Current verified CEF paths:
 
 ```text
+make smoke-default       # default launch verifies CEF stays off
 make smoke-cef           # 2 browser panes load HTTP 200
 make smoke-cef-four      # 4 browser panes load HTTP 200
 make smoke-cef-graceful  # browser panes close and CEF shuts down cleanly
 make smoke-cef-repeat    # repeated graceful launch/shutdown
-make verify-cef          # all of the above
+make verify-cef          # all CEF smoke tests
+make verify              # default smoke plus all CEF smoke tests
 ```
 
 ## Desired CEF bridge
