@@ -3,7 +3,7 @@ class Gsde < Formula
   homepage "https://github.com/gstark/gsde"
   version "0.1.8"
   url "https://github.com/gstark/gsde/releases/download/v#{version}/GSDE-#{version}.zip"
-  sha256 "72113a809e49f2c4b5a49bad14ba98c0e0063aeff854b8f8a9789c8f06a5a04a"
+  sha256 "f185765b226ac160a6050aceb45539b88b94698cdfb925261a85f920b3d6d261"
 
   depends_on macos: :ventura
 
