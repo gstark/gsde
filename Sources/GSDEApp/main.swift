@@ -604,6 +604,7 @@ final class VSCodePaneView: NSView {
     private var hasStartedSession = false
     private var currentServerURL: URL?
     private var currentCEFCacheDirectory: URL?
+    private static let cefErrorAborted = -3
     var drawsActiveAppearance = true
 
     init(paneID: String, configSource: WorkspaceConfigSource, codeServerManager: CodeServerManager) {
@@ -908,7 +909,7 @@ final class VSCodePaneView: NSView {
             updateWindowTitleForActivePane(title: currentTitle)
         }
         let httpStatus = gsde_chromium_browser_http_status(cefBrowser)
-        if httpStatus < 0 {
+        if httpStatus < 0, httpStatus != Self.cefErrorAborted {
             showFailure(title: "VS Code page failed", detail: "CEF reported load error \(httpStatus) for \(currentServerURL?.absoluteString ?? "the VS Code URL")")
         }
     }
