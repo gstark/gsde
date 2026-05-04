@@ -241,9 +241,11 @@ final class ThreePaneWorkspaceView: NSSplitView {
 
         var panes: [NSView] = [GhosttyHostView()]
         for index in 0..<browserPaneCount {
-            let rawURL = index < configuredURLs.count ? configuredURLs[index] : defaultURLs[index]
+            let stateIdentifier = "browser.\(index)"
+            let savedURL = UserDefaults.standard.string(forKey: "GSDE.BrowserPane.\(stateIdentifier).url")
+            let rawURL = index < configuredURLs.count ? configuredURLs[index] : (savedURL ?? defaultURLs[index])
             let url = URL(string: rawURL) ?? URL(string: defaultURLs[index]) ?? URL(string: "https://example.com")!
-            panes.append(BrowserPaneView(initialURL: url))
+            panes.append(BrowserPaneView(stateIdentifier: stateIdentifier, initialURL: url))
         }
         panes.append(GhosttyHostView())
         return panes
@@ -433,6 +435,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.removeObject(forKey: "NSWindow Frame \(frameAutosaveName)")
         for paneCount in 3...6 {
             UserDefaults.standard.removeObject(forKey: "NSSplitView Subview Frames GSDE.WorkspaceSplit.\(paneCount)")
+        }
+        for browserIndex in 0..<4 {
+            UserDefaults.standard.removeObject(forKey: "GSDE.BrowserPane.browser.\(browserIndex).url")
         }
         let frame = Self.frameCoveringAllDisplays()
         window?.setFrame(frame, display: true, animate: true)

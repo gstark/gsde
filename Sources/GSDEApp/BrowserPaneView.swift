@@ -21,6 +21,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     static weak var activePane: BrowserPaneView?
 
     private let profile: BrowserProfileConfig
+    private let stateIdentifier: String?
     private let toolbar = NSStackView()
     private let backButton = NSButton(title: "‹", target: nil, action: nil)
     private let forwardButton = NSButton(title: "›", target: nil, action: nil)
@@ -46,9 +47,11 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     init(
         frame frameRect: NSRect = .zero,
         profile: BrowserProfileConfig = .default,
+        stateIdentifier: String? = nil,
         initialURL: URL = URL(string: "https://www.google.com")!
     ) {
         self.profile = profile
+        self.stateIdentifier = stateIdentifier
         self.pendingInitialURL = initialURL
 
         let configuration = WKWebViewConfiguration()
@@ -68,6 +71,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
 
     required init?(coder: NSCoder) {
         self.profile = .default
+        self.stateIdentifier = nil
         self.pendingInitialURL = URL(string: "https://www.google.com")!
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
@@ -333,6 +337,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     func load(_ url: URL) {
         pendingInitialURL = url
         urlField.stringValue = url.absoluteString
+        saveCurrentURL(url)
         if let cefBrowser {
             url.absoluteString.withCString { gsde_chromium_browser_load_url(cefBrowser, $0) }
         } else {
@@ -581,8 +586,11 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     private func refreshCEFState() {
         guard let cefBrowser else { return }
         let currentURL = String(cString: gsde_chromium_browser_current_url(cefBrowser))
-        if !currentURL.isEmpty, urlField.currentEditor() == nil {
-            urlField.stringValue = currentURL
+        if !currentURL.isEmpty {
+            if urlField.currentEditor() == nil {
+                urlField.stringValue = currentURL
+            }
+            saveCurrentURLString(currentURL)
         }
 
         let loading = gsde_chromium_browser_is_loading(cefBrowser) != 0
@@ -627,6 +635,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         if let url = webView.url {
             urlField.stringValue = url.absoluteString
+            saveCurrentURL(url)
         }
         updateNavigationButtons()
     }
@@ -634,12 +643,22 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         if let url = webView.url {
             urlField.stringValue = url.absoluteString
+            saveCurrentURL(url)
         }
         updateNavigationButtons()
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         updateNavigationButtons()
+    }
+
+    private func saveCurrentURL(_ url: URL) {
+        saveCurrentURLString(url.absoluteString)
+    }
+
+    private func saveCurrentURLString(_ value: String) {
+        guard let stateIdentifier, !value.isEmpty, value != "about:blank" else { return }
+        UserDefaults.standard.set(value, forKey: "GSDE.BrowserPane.\(stateIdentifier).url")
     }
 
     private func updateNavigationButtons() {
