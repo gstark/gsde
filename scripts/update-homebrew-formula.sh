@@ -52,7 +52,7 @@ class Gsde < Formula
 
   def install
     if File.directory?("Contents") && File.file?("Contents/Info.plist")
-      prefix.install buildpath => "GSDE.app"
+      (prefix/"GSDE.app").install "Contents"
     else
       app = Dir["GSDE.app", "**/GSDE.app"].first
       odie "GSDE.app not found in release archive" if app.nil?
