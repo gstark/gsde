@@ -952,6 +952,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        NSApp.presentationOptions = [.hideDock, .hideMenuBar]
         installMainMenu()
         initializeChromiumIfAvailable()
 
@@ -960,18 +961,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         let window = NSWindow(
             contentRect: frame,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
         window.title = "GSDE"
+        window.hasShadow = false
+        window.level = .mainMenu
         window.contentView = contentView
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        window.setFrameAutosaveName(frameAutosaveName)
-        if !window.setFrameUsingName(frameAutosaveName) {
-            window.setFrame(frame, display: true)
-        }
+        window.setFrame(frame, display: true)
         window.makeKeyAndOrderFront(nil)
 
         self.window = window
@@ -1077,11 +1077,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     private static func frameCoveringAllDisplays() -> NSRect {
-        NSScreen.screens
+        let screens = NSScreen.screens
+        guard let firstScreen = screens.first else { return .zero }
+
+        let displayBounds = screens
             .map(\.frame)
             .reduce(NSRect.null) { accumulated, screenFrame in
                 accumulated.union(screenFrame)
             }
+
+        return NSRect(
+            x: firstScreen.frame.minX,
+            y: firstScreen.frame.maxY - displayBounds.height,
+            width: displayBounds.width,
+            height: displayBounds.height
+        )
     }
 
     private func installMainMenu() {
