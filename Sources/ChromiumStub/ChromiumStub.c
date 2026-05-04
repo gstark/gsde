@@ -26,6 +26,7 @@ static bool initialized = false;
 static char status[512] = "WebKit fallback backend active; CEF has not been initialized";
 static char last_error[512] = "No CEF errors recorded";
 static atomic_int next_browser_id = 1;
+static atomic_int live_browser_count = 0;
 
 #if GSDE_HAVE_CEF_HEADERS
 typedef int (*cef_execute_process_fn)(const cef_main_args_t *, cef_app_t *, void *);
@@ -73,6 +74,12 @@ static void set_last_error(const char *message) {
 
 const char *gsde_chromium_last_error(void) {
     return last_error;
+}
+
+static void log_live_browser_count(const char *prefix) {
+    char message[128];
+    snprintf(message, sizeof(message), "%s live CEF browsers: %d", prefix ? prefix : "CEF", atomic_load(&live_browser_count));
+    gsde_log(message);
 }
 
 static bool load_cef_framework(void) {
@@ -322,10 +329,33 @@ static cef_load_handler_t *CEF_CALLBACK gsde_get_load_handler(cef_client_t *clie
 static void CEF_CALLBACK gsde_on_after_created(cef_life_span_handler_t *self, cef_browser_t *cef_browser) {
     gsde_chromium_browser_t *browser = browser_from_life_span(self);
     browser->browser = cef_browser;
+    atomic_fetch_add(&live_browser_count, 1);
     char message[128];
     snprintf(message, sizeof(message), "CEF browser #%d on_after_created", browser->browser_id);
     gsde_log(message);
+    log_live_browser_count("after create");
     if (browser->browser && browser->browser->base.add_ref) browser->browser->base.add_ref((cef_base_ref_counted_t *)browser->browser);
+}
+
+static int CEF_CALLBACK gsde_do_close(cef_life_span_handler_t *self, cef_browser_t *cef_browser) {
+    gsde_chromium_browser_t *browser = browser_from_life_span(self);
+    (void)cef_browser;
+    char message[128];
+    snprintf(message, sizeof(message), "CEF browser #%d do_close", browser->browser_id);
+    gsde_log(message);
+    return 0;
+}
+
+static void CEF_CALLBACK gsde_on_before_close(cef_life_span_handler_t *self, cef_browser_t *cef_browser) {
+    gsde_chromium_browser_t *browser = browser_from_life_span(self);
+    (void)cef_browser;
+    browser->browser = NULL;
+    int previous = atomic_fetch_sub(&live_browser_count, 1);
+    if (previous <= 0) atomic_store(&live_browser_count, 0);
+    char message[128];
+    snprintf(message, sizeof(message), "CEF browser #%d on_before_close", browser->browser_id);
+    gsde_log(message);
+    log_live_browser_count("after close");
 }
 
 static void update_browser_url_from_frame(gsde_chromium_browser_t *browser, cef_frame_t *frame) {
@@ -430,6 +460,8 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     browser->client.get_life_span_handler = gsde_get_life_span_handler;
     browser->client.get_load_handler = gsde_get_load_handler;
     browser->life_span_handler.on_after_created = gsde_on_after_created;
+    browser->life_span_handler.do_close = gsde_do_close;
+    browser->life_span_handler.on_before_close = gsde_on_before_close;
     browser->load_handler.on_loading_state_change = gsde_on_loading_state_change;
     browser->load_handler.on_load_start = gsde_on_load_start;
     browser->load_handler.on_load_end = gsde_on_load_end;
