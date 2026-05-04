@@ -245,7 +245,15 @@ final class ThreePaneWorkspaceView: NSSplitView {
             let savedURL = UserDefaults.standard.string(forKey: "GSDE.BrowserPane.\(stateIdentifier).url")
             let rawURL = index < configuredURLs.count ? configuredURLs[index] : (savedURL ?? defaultURLs[index])
             let url = URL(string: rawURL) ?? URL(string: defaultURLs[index]) ?? URL(string: "https://example.com")!
-            panes.append(BrowserPaneView(stateIdentifier: stateIdentifier, initialURL: url))
+            let profile = BrowserProfileConfig(
+                name: stateIdentifier,
+                storageDirectory: FileManager.default.urls(
+                    for: .applicationSupportDirectory,
+                    in: .userDomainMask
+                ).first?.appendingPathComponent("GSDE/Chromium/Profiles/\(stateIdentifier)", isDirectory: true),
+                persistent: true
+            )
+            panes.append(BrowserPaneView(profile: profile, stateIdentifier: stateIdentifier, initialURL: url))
         }
         panes.append(GhosttyHostView())
         return panes

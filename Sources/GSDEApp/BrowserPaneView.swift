@@ -524,8 +524,9 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         browserContainer.layoutSubtreeIfNeeded()
         let width = Int32(max(1, browserContainer.bounds.width))
         let height = Int32(max(1, browserContainer.bounds.height))
+        let cefCachePath = profile.persistent ? (profile.storageDirectory?.path ?? "") : ""
         let browser = "about:blank".withCString { initialURLPointer in
-            "".withCString { cachePathPointer in
+            cefCachePath.withCString { cachePathPointer in
                 gsde_chromium_browser_create(
                     Unmanaged.passUnretained(browserContainer).toOpaque(),
                     width,

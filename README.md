@@ -56,7 +56,7 @@ make run-cef-two-browsers
 GSDE_BROWSER_PANES=2 make run-cef-foreground
 ```
 
-`GSDE_BROWSER_PANES` accepts 1-4 browser panes. Initial browser URLs can be overridden with comma-separated `GSDE_BROWSER_URLS`:
+`GSDE_BROWSER_PANES` accepts 1-4 browser panes. Each browser pane gets its own persistent Chromium profile directory under `~/Library/Application Support/GSDE/Chromium/Profiles`. Initial browser URLs can be overridden with comma-separated `GSDE_BROWSER_URLS`:
 
 ```sh
 GSDE_BROWSER_PANES=2 \
