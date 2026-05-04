@@ -412,6 +412,42 @@ static void update_browser_url_from_frame(gsde_chromium_browser_t *browser, cef_
     cef_string_userfree_utf16_free_ptr(cef_url);
 }
 
+static void load_url_in_cef_browser(cef_browser_t *cef_browser, const cef_string_t *url) {
+    if (!cef_browser || !url) return;
+    cef_frame_t *frame = cef_browser->get_main_frame ? cef_browser->get_main_frame(cef_browser) : NULL;
+    if (!frame) return;
+    frame->load_url(frame, url);
+    if (frame->base.release) frame->base.release((cef_base_ref_counted_t *)frame);
+}
+
+static int CEF_CALLBACK gsde_on_before_popup(
+    cef_life_span_handler_t *self,
+    cef_browser_t *cef_browser,
+    cef_frame_t *frame,
+    int popup_id,
+    const cef_string_t *target_url,
+    const cef_string_t *target_frame_name,
+    cef_window_open_disposition_t target_disposition,
+    int user_gesture,
+    const cef_popup_features_t *popupFeatures,
+    cef_window_info_t *windowInfo,
+    cef_client_t **client,
+    cef_browser_settings_t *settings,
+    cef_dictionary_value_t **extra_info,
+    int *no_javascript_access
+) {
+    (void)frame; (void)popup_id; (void)target_frame_name; (void)target_disposition; (void)user_gesture; (void)popupFeatures; (void)windowInfo; (void)client; (void)settings; (void)extra_info; (void)no_javascript_access;
+    gsde_chromium_browser_t *browser = browser_from_life_span(self);
+    if (target_url && target_url->str && target_url->length > 0) {
+        copy_cef_string_to_buffer(target_url, browser->current_url, sizeof(browser->current_url));
+        load_url_in_cef_browser(cef_browser, target_url);
+        char message[128];
+        snprintf(message, sizeof(message), "CEF browser #%d opened popup in same pane", browser->browser_id);
+        gsde_log(message);
+    }
+    return 1;
+}
+
 static void CEF_CALLBACK gsde_on_loading_state_change(cef_load_handler_t *self, cef_browser_t *cef_browser, int isLoading, int canGoBack, int canGoForward) {
     (void)cef_browser; (void)canGoBack; (void)canGoForward;
     gsde_chromium_browser_t *browser = browser_from_load_handler(self);
@@ -533,6 +569,7 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     browser->client.get_life_span_handler = gsde_get_life_span_handler;
     browser->client.get_load_handler = gsde_get_load_handler;
     browser->client.get_display_handler = gsde_get_display_handler;
+    browser->life_span_handler.on_before_popup = gsde_on_before_popup;
     browser->life_span_handler.on_after_created = gsde_on_after_created;
     browser->life_span_handler.do_close = gsde_do_close;
     browser->life_span_handler.on_before_close = gsde_on_before_close;
