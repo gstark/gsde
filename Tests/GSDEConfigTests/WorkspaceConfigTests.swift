@@ -200,6 +200,9 @@ struct WorkspaceConfigTests {
         #expect(throws: VSCodePaneLaunchError.emptyPassword) {
             try builder.configuration(executableURL: executableURL, paneID: "editor", configSource: .environment(configURL), port: 3000, password: "")
         }
+        #expect(throws: VSCodePaneLaunchError.emptyPassword) {
+            try builder.configuration(executableURL: executableURL, paneID: "editor", configSource: .environment(configURL), port: 3000, password: " \n\t")
+        }
         #expect(throws: VSCodePaneLaunchError.emptyPaneID) {
             try builder.configuration(executableURL: executableURL, paneID: " ", configSource: .environment(configURL), port: 3000, password: "secret")
         }

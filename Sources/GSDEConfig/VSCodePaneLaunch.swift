@@ -153,7 +153,9 @@ public struct CodeServerLaunchBuilder: Sendable {
         password: String
     ) throws -> CodeServerLaunchConfiguration {
         guard port != 0 else { throw VSCodePaneLaunchError.invalidPort(port) }
-        guard !password.isEmpty else { throw VSCodePaneLaunchError.emptyPassword }
+        guard !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw VSCodePaneLaunchError.emptyPassword
+        }
 
         let stateDirectories = try stateResolver.directories(paneID: paneID, configSource: configSource)
         let normalizedBindHost = try Self.normalizedHost(bindHost)
