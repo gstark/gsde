@@ -599,6 +599,31 @@ void gsde_chromium_browser_stop(gsde_chromium_browser_t *browser) {
 #endif
 }
 
+void gsde_chromium_browser_find(gsde_chromium_browser_t *browser, const char *query, int forward, int match_case, int find_next) {
+#if GSDE_HAVE_CEF_HEADERS
+    if (!browser || !browser->browser) return;
+    cef_browser_host_t *host = browser->browser->get_host(browser->browser);
+    if (!host || !host->find) return;
+    cef_string_t cef_query;
+    memset(&cef_query, 0, sizeof(cef_query));
+    if (query && query[0] != '\0') set_cef_string(query, &cef_query);
+    host->find(host, query && query[0] != '\0' ? &cef_query : NULL, forward ? 1 : 0, match_case ? 1 : 0, find_next ? 1 : 0);
+    cef_string_utf16_clear_ptr(&cef_query);
+#else
+    (void)browser; (void)query; (void)forward; (void)match_case; (void)find_next;
+#endif
+}
+
+void gsde_chromium_browser_stop_finding(gsde_chromium_browser_t *browser, int clear_selection) {
+#if GSDE_HAVE_CEF_HEADERS
+    if (!browser || !browser->browser) return;
+    cef_browser_host_t *host = browser->browser->get_host(browser->browser);
+    if (host && host->stop_finding) host->stop_finding(host, clear_selection ? 1 : 0);
+#else
+    (void)browser; (void)clear_selection;
+#endif
+}
+
 void gsde_chromium_browser_focus(gsde_chromium_browser_t *browser, int focused) {
 #if GSDE_HAVE_CEF_HEADERS
     if (!browser || !browser->browser) return;

@@ -27,6 +27,10 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     private let devToolsButton = NSButton(title: "DevTools", target: nil, action: nil)
     private let backendStatusLabel = NSTextField(labelWithString: "")
     private let urlField = NSTextField(string: "")
+    private let findField = NSTextField(string: "")
+    private let findPreviousButton = NSButton(title: "↑", target: nil, action: nil)
+    private let findNextButton = NSButton(title: "↓", target: nil, action: nil)
+    private let findCloseButton = NSButton(title: "×", target: nil, action: nil)
     private let browserContainer = NSView()
     private let webView: WKWebView
     private var cefBrowser: OpaquePointer?
@@ -159,6 +163,12 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         switch (flags, characters) {
         case ([.command], "l"):
             focusURLField()
+        case ([.command], "f"):
+            openFind()
+        case ([.command], "g"):
+            findNext()
+        case ([.command, .shift], "g"):
+            findPrevious()
         case ([.command], "r"):
             performReload(ignoringCache: false)
         case ([.command, .shift], "r"):
@@ -171,6 +181,12 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             goForward()
         case ([.command, .option], "i"):
             showDeveloperTools()
+        case ([], "\u{1b}"):
+            if !findField.isHidden {
+                closeFind()
+            } else {
+                return false
+            }
         default:
             return false
         }
@@ -217,7 +233,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         toolbar.spacing = 6
         toolbar.distribution = .fill
 
-        [backButton, forwardButton, reloadButton, stopButton, devToolsButton].forEach { button in
+        [backButton, forwardButton, reloadButton, stopButton, devToolsButton, findPreviousButton, findNextButton, findCloseButton].forEach { button in
             button.bezelStyle = .rounded
             button.controlSize = .small
         }
@@ -232,6 +248,12 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         stopButton.action = #selector(stopLoading)
         devToolsButton.target = self
         devToolsButton.action = #selector(showDeveloperTools)
+        findPreviousButton.target = self
+        findPreviousButton.action = #selector(findPrevious)
+        findNextButton.target = self
+        findNextButton.action = #selector(findNext)
+        findCloseButton.target = self
+        findCloseButton.action = #selector(closeFind)
 
         backendStatusLabel.stringValue = String(cString: gsde_chromium_backend_status())
         backendStatusLabel.textColor = .secondaryLabelColor
@@ -243,18 +265,32 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         urlField.action = #selector(navigateFromURLField)
         urlField.lineBreakMode = .byTruncatingMiddle
 
+        findField.placeholderString = "Find"
+        findField.target = self
+        findField.action = #selector(findNext)
+        findField.isHidden = true
+        findPreviousButton.isHidden = true
+        findNextButton.isHidden = true
+        findCloseButton.isHidden = true
+
         toolbar.addArrangedSubview(backButton)
         toolbar.addArrangedSubview(forwardButton)
         toolbar.addArrangedSubview(reloadButton)
         toolbar.addArrangedSubview(stopButton)
         toolbar.addArrangedSubview(urlField)
         toolbar.addArrangedSubview(devToolsButton)
+        toolbar.addArrangedSubview(findField)
+        toolbar.addArrangedSubview(findPreviousButton)
+        toolbar.addArrangedSubview(findNextButton)
+        toolbar.addArrangedSubview(findCloseButton)
         toolbar.addArrangedSubview(backendStatusLabel)
 
         backendStatusLabel.setContentHuggingPriority(.required, for: .horizontal)
         backendStatusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         urlField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         urlField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        findField.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        findField.widthAnchor.constraint(greaterThanOrEqualToConstant: 140).isActive = true
         updateNavigationButtons()
     }
 
@@ -298,6 +334,53 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     @objc private func focusURLField() {
         window?.makeFirstResponder(urlField)
         urlField.currentEditor()?.selectAll(nil)
+    }
+
+    @objc private func openFind() {
+        setFindVisible(true)
+        window?.makeFirstResponder(findField)
+        findField.currentEditor()?.selectAll(nil)
+    }
+
+    @objc private func closeFind() {
+        setFindVisible(false)
+        if let cefBrowser {
+            gsde_chromium_browser_stop_finding(cefBrowser, 1)
+        } else {
+            webView.evaluateJavaScript("window.getSelection().removeAllRanges()")
+        }
+        window?.makeFirstResponder(self)
+    }
+
+    @objc private func findNext() {
+        performFind(forward: true, findNext: true)
+    }
+
+    @objc private func findPrevious() {
+        performFind(forward: false, findNext: true)
+    }
+
+    private func setFindVisible(_ visible: Bool) {
+        [findField, findPreviousButton, findNextButton, findCloseButton].forEach { $0.isHidden = !visible }
+    }
+
+    private func performFind(forward: Bool, findNext: Bool) {
+        let query = findField.stringValue
+        guard !query.isEmpty else { return }
+        if let cefBrowser {
+            query.withCString { gsde_chromium_browser_find(cefBrowser, $0, forward ? 1 : 0, 0, findNext ? 1 : 0) }
+        } else {
+            findInWebView(query: query, forward: forward)
+        }
+    }
+
+    private func findInWebView(query: String, forward: Bool) {
+        let escaped = query
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\n", with: "\\n")
+        let script = "window.find('\(escaped)', false, \(!forward), true, false, false, false)"
+        webView.evaluateJavaScript(script)
     }
 
     @objc private func goBack() {
