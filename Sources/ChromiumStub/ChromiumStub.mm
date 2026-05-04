@@ -242,6 +242,13 @@ int gsde_chromium_live_browser_count(void) {
 }
 
 #if GSDE_HAVE_CEF_HEADERS
+static void release_request_context(cef_request_context_t **request_context) {
+    if (request_context && *request_context && (*request_context)->base.base.release) {
+        (*request_context)->base.base.release((cef_base_ref_counted_t *)*request_context);
+        *request_context = nullptr;
+    }
+}
+
 struct gsde_chromium_browser {
     gsde_chromium_browser()
         : client{},
@@ -267,10 +274,7 @@ struct gsde_chromium_browser {
           destroy_requested(0) {}
 
     ~gsde_chromium_browser() {
-        if (request_context && request_context->base.base.release) {
-            request_context->base.base.release((cef_base_ref_counted_t *)request_context);
-            request_context = nullptr;
-        }
+        release_request_context(&request_context);
     }
 
     cef_client_t client;
@@ -583,6 +587,7 @@ static void CEF_CALLBACK gsde_on_before_close(cef_life_span_handler_t *self, cef
     if (closed_browser && closed_browser->base.release) {
         closed_browser->base.release((cef_base_ref_counted_t *)closed_browser);
     }
+    release_request_context(&browser->request_context);
 }
 
 static void copy_cef_string_to_buffer(const cef_string_t *cef_string, char *buffer, size_t buffer_size) {
