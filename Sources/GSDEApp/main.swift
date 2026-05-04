@@ -943,6 +943,11 @@ final class ThreePaneWorkspaceView: NSSplitView {
     }
 }
 
+final class BorderlessMainWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var window: NSWindow?
@@ -959,7 +964,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let frame = Self.frameCoveringAllDisplays()
         let contentView = Self.makeWorkspaceView(frame: NSRect(origin: .zero, size: frame.size))
 
-        let window = NSWindow(
+        let window = BorderlessMainWindow(
             contentRect: frame,
             styleMask: [.borderless],
             backing: .buffered,
