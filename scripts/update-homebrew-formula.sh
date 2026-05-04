@@ -54,6 +54,7 @@ cask "gsde" do
   homepage "https://github.com/${OWNER}/${REPO}"
 
   depends_on macos: ">= :ventura"
+  conflicts_with formula: "gsde"
 
   app "GSDE.app"
   binary "GSDE.app/Contents/Resources/bin/gsde"

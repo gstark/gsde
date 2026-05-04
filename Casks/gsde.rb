@@ -8,6 +8,7 @@ cask "gsde" do
   homepage "https://github.com/gstark/gsde"
 
   depends_on macos: ">= :ventura"
+  conflicts_with formula: "gsde"
 
   app "GSDE.app"
   binary "GSDE.app/Contents/Resources/bin/gsde"

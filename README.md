@@ -118,6 +118,14 @@ brew tap OWNER/gsde https://github.com/OWNER/gsde.git
 brew install --cask gsde
 ```
 
+If you installed an earlier formula-based GSDE package, remove it before installing the cask so the `gsde` CLI symlink points at the cask app:
+
+```sh
+brew uninstall --formula gsde 2>/dev/null || true
+rm -f "$(brew --prefix)/bin/gsde"
+brew reinstall --cask gsde
+```
+
 The cask installs `GSDE.app` and exposes the `gsde` CLI on `PATH`.
 
 
