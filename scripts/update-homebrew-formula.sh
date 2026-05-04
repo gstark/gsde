@@ -51,7 +51,12 @@ class Gsde < Formula
   depends_on macos: :ventura
 
   def install
-    prefix.install "GSDE.app"
+    app = if File.directory?("GSDE.app")
+      "GSDE.app"
+    else
+      "build/GSDE.app"
+    end
+    prefix.install app
 
     (bin/"gsde").write <<~SH
       #!/bin/sh
