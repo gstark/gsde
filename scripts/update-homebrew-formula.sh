@@ -54,10 +54,15 @@ cask "gsde" do
   homepage "https://github.com/${OWNER}/${REPO}"
 
   depends_on macos: ">= :ventura"
-  conflicts_with formula: "gsde"
 
   app "GSDE.app"
   binary "GSDE.app/Contents/Resources/bin/gsde"
+
+  caveats <<~EOS
+    If you installed the earlier formula-based GSDE package, remove it first:
+      brew uninstall --formula gsde 2>/dev/null || true
+      rm -f "$(brew --prefix)/bin/gsde"
+  EOS
 end
 RUBY
 
