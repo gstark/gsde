@@ -4,11 +4,24 @@ set -euo pipefail
 APP_BUNDLE="${1:-build/GSDE.app}"
 if [[ -n "${GSDE_VERSION:-}" ]]; then
   VERSION="$GSDE_VERSION"
-else
-  VERSION="$(git describe --tags --always 2>/dev/null || date +%Y%m%d%H%M%S)"
-  if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
-    VERSION="${VERSION}-dirty"
+elif [[ -f "$APP_BUNDLE/Contents/Info.plist" ]]; then
+  short_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist" 2>/dev/null || true)
+  build_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_BUNDLE/Contents/Info.plist" 2>/dev/null || true)
+  if [[ -n "$short_version" && -n "$build_version" ]]; then
+    VERSION="${short_version}-${build_version}"
+  else
+    VERSION=""
   fi
+else
+  VERSION=""
+fi
+
+if [[ -z "$VERSION" ]]; then
+  VERSION="$(git describe --tags --always 2>/dev/null || date +%Y%m%d%H%M%S)"
+fi
+
+if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+  VERSION="${VERSION}-dirty"
 fi
 DIST_DIR="${GSDE_DIST_DIR:-dist}"
 ARCHIVE_NAME="GSDE-${VERSION}.zip"

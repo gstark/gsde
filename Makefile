@@ -1,4 +1,6 @@
 APP_NAME := GSDE
+APP_VERSION ?= 0.1.0
+APP_BUILD ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 SWIFT_PRODUCT := GSDEApp
 CHROMIUM_HELPER_PRODUCT := GSDEChromiumHelper
 CONFIG := release
@@ -29,6 +31,8 @@ app: build
 	mkdir -p $(MACOS_DIR) $(FRAMEWORKS_DIR)
 	cp $(BINARY) $(MACOS_DIR)/$(APP_NAME)
 	cp Info.plist $(CONTENTS_DIR)/Info.plist
+	/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(APP_VERSION)" $(CONTENTS_DIR)/Info.plist
+	/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(APP_BUILD)" $(CONTENTS_DIR)/Info.plist
 	if [ -n "$$LIBGHOSTTY_PATH" ]; then cp "$$LIBGHOSTTY_PATH" $(FRAMEWORKS_DIR)/libghostty.dylib; elif [ -f "$(BUILT_LIBGHOSTTY)" ]; then cp "$(BUILT_LIBGHOSTTY)" $(FRAMEWORKS_DIR)/libghostty.dylib; fi
 	if [ -d "$(CEF_FRAMEWORK)" ]; then cp -R "$(CEF_FRAMEWORK)" $(FRAMEWORKS_DIR)/; fi
 	./scripts/package-cef-helper.sh "$(CHROMIUM_HELPER_BINARY)" "$(FRAMEWORKS_DIR)" "$(APP_NAME)" "personal.gsde"

@@ -8,6 +8,8 @@ Build the app shell:
 
 ```sh
 make app
+# optional version overrides:
+APP_VERSION=0.2.0 APP_BUILD=42 make app
 ```
 
 Build Ghostty's embeddable dylib and include it in the app bundle:
