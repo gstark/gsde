@@ -876,6 +876,16 @@ final class MosaicWorkspaceView: NSView {
     }
 }
 
+enum WorkspaceStateScope {
+    private static let prefix = ProcessInfo.processInfo.environment["GSDE_STATE_SCOPE"]?
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+
+    static func key(_ value: String) -> String {
+        guard let prefix, !prefix.isEmpty else { return value }
+        return "\(prefix).\(value)"
+    }
+}
+
 final class ThreePaneWorkspaceView: NSSplitView {
     private enum PaneKind: String, Codable {
         case terminal
@@ -897,7 +907,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
 
     private var didSetInitialDividerPositions = false
     private var splitAutosaveName: NSSplitView.AutosaveName {
-        NSSplitView.AutosaveName("GSDE.WorkspaceSplit.\(arrangedSubviews.count)")
+        NSSplitView.AutosaveName(WorkspaceStateScope.key("GSDE.WorkspaceSplit.\(arrangedSubviews.count)"))
     }
 
     override init(frame frameRect: NSRect) {
@@ -937,7 +947,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
         var panes: [NSView] = [GhosttyHostView()]
         for index in 0..<browserPaneCount {
             let stateIdentifier = "browser.\(index)"
-            let savedURL = UserDefaults.standard.string(forKey: "GSDE.BrowserPane.\(stateIdentifier).url")
+            let savedURL = UserDefaults.standard.string(forKey: WorkspaceStateScope.key("GSDE.BrowserPane.\(stateIdentifier).url"))
             let rawURL = index < configuredURLs.count ? configuredURLs[index] : (savedURL ?? defaultURLs[index])
             let url = URL(string: rawURL) ?? URL(string: defaultURLs[index]) ?? URL(string: "https://example.com")!
             let profile = BrowserProfileConfig(
@@ -962,7 +972,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
     }
 
     private static func makeSavedPanes() -> [NSView]? {
-        guard let data = UserDefaults.standard.data(forKey: paneLayoutDefaultsKey),
+        guard let data = UserDefaults.standard.data(forKey: WorkspaceStateScope.key(paneLayoutDefaultsKey)),
               let descriptors = decodeSavedPaneDescriptors(from: data),
               !descriptors.isEmpty
         else { return nil }
@@ -975,7 +985,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
                 return GhosttyHostView()
             case .browser:
                 guard let stateIdentifier = descriptor.stateIdentifier else { return nil }
-                let savedURL = UserDefaults.standard.string(forKey: "GSDE.BrowserPane.\(stateIdentifier).url")
+                let savedURL = UserDefaults.standard.string(forKey: WorkspaceStateScope.key("GSDE.BrowserPane.\(stateIdentifier).url"))
                 let url = savedURL.flatMap(URL.init(string:)) ?? URL(string: "https://example.com")!
                 let profile = BrowserProfileConfig(
                     name: stateIdentifier,
@@ -1019,7 +1029,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
             let identifier = profileURL.lastPathComponent
             guard identifier.hasPrefix("browser.dynamic."), !retainedIdentifiers.contains(identifier) else { continue }
             try? FileManager.default.removeItem(at: profileURL)
-            UserDefaults.standard.removeObject(forKey: "GSDE.BrowserPane.\(identifier).url")
+            UserDefaults.standard.removeObject(forKey: WorkspaceStateScope.key("GSDE.BrowserPane.\(identifier).url"))
         }
     }
 
@@ -1171,7 +1181,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
         }
         let layout = WorkspaceLayout(version: Self.paneLayoutVersion, panes: descriptors)
         guard let data = try? JSONEncoder().encode(layout) else { return }
-        UserDefaults.standard.set(data, forKey: Self.paneLayoutDefaultsKey)
+        UserDefaults.standard.set(data, forKey: WorkspaceStateScope.key(Self.paneLayoutDefaultsKey))
     }
 
     private func distributePanesEvenly() {
@@ -1232,7 +1242,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
     }
 
     private func nextDynamicBrowserIdentifier() -> String {
-        let key = "GSDE.BrowserPane.nextDynamicIndex"
+        let key = WorkspaceStateScope.key("GSDE.BrowserPane.nextDynamicIndex")
         let index = UserDefaults.standard.integer(forKey: key)
         UserDefaults.standard.set(index + 1, forKey: key)
         return "browser.dynamic.\(index)"
@@ -1257,7 +1267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var layoutFlashPanels: [LayoutFlashPanel] = []
     private weak var responderBeforeLayoutSwitcher: NSResponder?
     private var didPrepareChromiumShutdown = false
-    private let frameAutosaveName = "GSDE.MainWindow"
+    private var frameAutosaveName: String { WorkspaceStateScope.key("GSDE.MainWindow") }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -1712,13 +1722,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc private func resetWindowAndPaneLayout(_ sender: Any?) {
         UserDefaults.standard.removeObject(forKey: "NSWindow Frame \(frameAutosaveName)")
         for paneCount in 3...6 {
-            UserDefaults.standard.removeObject(forKey: "NSSplitView Subview Frames GSDE.WorkspaceSplit.\(paneCount)")
+            UserDefaults.standard.removeObject(forKey: "NSSplitView Subview Frames \(WorkspaceStateScope.key("GSDE.WorkspaceSplit.\(paneCount)"))")
         }
         for browserIndex in 0..<4 {
-            UserDefaults.standard.removeObject(forKey: "GSDE.BrowserPane.browser.\(browserIndex).url")
+            UserDefaults.standard.removeObject(forKey: WorkspaceStateScope.key("GSDE.BrowserPane.browser.\(browserIndex).url"))
         }
-        UserDefaults.standard.removeObject(forKey: "GSDE.WorkspacePaneLayout")
-        UserDefaults.standard.removeObject(forKey: "GSDE.BrowserPane.nextDynamicIndex")
+        UserDefaults.standard.removeObject(forKey: WorkspaceStateScope.key("GSDE.WorkspacePaneLayout"))
+        UserDefaults.standard.removeObject(forKey: WorkspaceStateScope.key("GSDE.BrowserPane.nextDynamicIndex"))
         let frame = Self.frameCoveringAllDisplays()
         window?.setFrame(frame, display: true, animate: true)
         (window?.contentView as? ThreePaneWorkspaceView)?.resetDividerPositions()

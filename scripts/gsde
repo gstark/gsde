@@ -72,13 +72,15 @@ if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
   exit 69
 fi
 
+STATE_SCOPE="GSDE.Project.$(printf '%s' "$PROJECT_DIR" | shasum -a 256 | awk '{print substr($1,1,16)}')"
+
 if [ "$VALIDATE" -eq 1 ]; then
   APP_BINARY="$APP_PATH/Contents/MacOS/GSDE"
   if [ ! -x "$APP_BINARY" ]; then
     echo "gsde: could not find executable app binary at $APP_BINARY" >&2
     exit 69
   fi
-  exec env GSDE_VALIDATE_CONFIG=1 GSDE_PROJECT_DIR="$PROJECT_DIR" "$APP_BINARY"
+  exec env GSDE_VALIDATE_CONFIG=1 GSDE_PROJECT_DIR="$PROJECT_DIR" GSDE_STATE_SCOPE="$STATE_SCOPE" "$APP_BINARY"
 fi
 
-exec open -n --env GSDE_PROJECT_DIR="$PROJECT_DIR" "$APP_PATH"
+exec open -n --env GSDE_PROJECT_DIR="$PROJECT_DIR" --env GSDE_STATE_SCOPE="$STATE_SCOPE" "$APP_PATH"

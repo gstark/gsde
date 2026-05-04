@@ -868,7 +868,7 @@ final class BrowserPaneView: NSView {
 
     private func saveCurrentURLString(_ value: String) {
         guard let stateIdentifier, !value.isEmpty, value != "about:blank" else { return }
-        UserDefaults.standard.set(value, forKey: "GSDE.BrowserPane.\(stateIdentifier).url")
+        UserDefaults.standard.set(value, forKey: WorkspaceStateScope.key("GSDE.BrowserPane.\(stateIdentifier).url"))
     }
 
     private func updateNavigationButtons() {
