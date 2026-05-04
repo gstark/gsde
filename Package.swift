@@ -26,7 +26,7 @@ let package = Package(
             ],
             cxxSettings: [
                 .define("CEF_API_VERSION", to: "14700"),
-                .unsafeFlags(["-I", "external/cef"])
+                .unsafeFlags(["-I", "external/cef", "-std=c++17"])
             ]
         ),
         .executableTarget(
