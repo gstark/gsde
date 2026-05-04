@@ -13,6 +13,7 @@
 #include "include/capi/cef_client_capi.h"
 #include "include/capi/cef_context_menu_handler_capi.h"
 #include "include/capi/cef_display_handler_capi.h"
+#include "include/capi/cef_download_handler_capi.h"
 #include "include/capi/cef_frame_capi.h"
 #include "include/capi/cef_life_span_handler_capi.h"
 #include "include/capi/cef_load_handler_capi.h"
@@ -241,6 +242,7 @@ struct gsde_chromium_browser {
     cef_load_handler_t load_handler;
     cef_display_handler_t display_handler;
     cef_context_menu_handler_t context_menu_handler;
+    cef_download_handler_t download_handler;
     atomic_int ref_count;
     cef_browser_t *browser;
     cef_window_handle_t view;
@@ -275,6 +277,10 @@ static gsde_chromium_browser_t *browser_from_context_menu_handler(cef_context_me
     return (gsde_chromium_browser_t *)((char *)handler - offsetof(gsde_chromium_browser_t, context_menu_handler));
 }
 
+static gsde_chromium_browser_t *browser_from_download_handler(cef_download_handler_t *handler) {
+    return (gsde_chromium_browser_t *)((char *)handler - offsetof(gsde_chromium_browser_t, download_handler));
+}
+
 static gsde_chromium_browser_t *browser_from_client_base(cef_base_ref_counted_t *base) {
     return (gsde_chromium_browser_t *)((char *)base - offsetof(gsde_chromium_browser_t, client));
 }
@@ -293,6 +299,10 @@ static gsde_chromium_browser_t *browser_from_display_base(cef_base_ref_counted_t
 
 static gsde_chromium_browser_t *browser_from_context_menu_base(cef_base_ref_counted_t *base) {
     return (gsde_chromium_browser_t *)((char *)base - offsetof(gsde_chromium_browser_t, context_menu_handler));
+}
+
+static gsde_chromium_browser_t *browser_from_download_base(cef_base_ref_counted_t *base) {
+    return (gsde_chromium_browser_t *)((char *)base - offsetof(gsde_chromium_browser_t, download_handler));
 }
 
 static void CEF_CALLBACK gsde_client_add_ref(cef_base_ref_counted_t *base) {
@@ -375,6 +385,22 @@ static int CEF_CALLBACK gsde_context_menu_has_at_least_one_ref(cef_base_ref_coun
     return atomic_load(&browser_from_context_menu_base(base)->ref_count) >= 1;
 }
 
+static void CEF_CALLBACK gsde_download_add_ref(cef_base_ref_counted_t *base) {
+    atomic_fetch_add(&browser_from_download_base(base)->ref_count, 1);
+}
+
+static int CEF_CALLBACK gsde_download_release(cef_base_ref_counted_t *base) {
+    return atomic_fetch_sub(&browser_from_download_base(base)->ref_count, 1) == 1;
+}
+
+static int CEF_CALLBACK gsde_download_has_one_ref(cef_base_ref_counted_t *base) {
+    return atomic_load(&browser_from_download_base(base)->ref_count) == 1;
+}
+
+static int CEF_CALLBACK gsde_download_has_at_least_one_ref(cef_base_ref_counted_t *base) {
+    return atomic_load(&browser_from_download_base(base)->ref_count) >= 1;
+}
+
 static cef_life_span_handler_t *CEF_CALLBACK gsde_get_life_span_handler(cef_client_t *client) {
     return &browser_from_client(client)->life_span_handler;
 }
@@ -389,6 +415,10 @@ static cef_display_handler_t *CEF_CALLBACK gsde_get_display_handler(cef_client_t
 
 static cef_context_menu_handler_t *CEF_CALLBACK gsde_get_context_menu_handler(cef_client_t *client) {
     return &browser_from_client(client)->context_menu_handler;
+}
+
+static cef_download_handler_t *CEF_CALLBACK gsde_get_download_handler(cef_client_t *client) {
+    return &browser_from_client(client)->download_handler;
 }
 
 static void CEF_CALLBACK gsde_on_after_created(cef_life_span_handler_t *self, cef_browser_t *cef_browser) {
@@ -580,6 +610,59 @@ static void CEF_CALLBACK gsde_on_context_menu_dismissed(cef_context_menu_handler
     gsde_log(message);
 }
 
+static int CEF_CALLBACK gsde_can_download(cef_download_handler_t *self, cef_browser_t *cef_browser, const cef_string_t *url, const cef_string_t *request_method) {
+    (void)cef_browser; (void)request_method;
+    gsde_chromium_browser_t *browser = browser_from_download_handler(self);
+    char url_buffer[512];
+    copy_cef_string_to_buffer(url, url_buffer, sizeof(url_buffer));
+    char message[768];
+    snprintf(message, sizeof(message), "CEF browser #%d allowing download: %s", browser->browser_id, url_buffer);
+    gsde_log(message);
+    return 1;
+}
+
+static int CEF_CALLBACK gsde_on_before_download(
+    cef_download_handler_t *self,
+    cef_browser_t *cef_browser,
+    cef_download_item_t *download_item,
+    const cef_string_t *suggested_name,
+    cef_before_download_callback_t *callback
+) {
+    (void)cef_browser; (void)download_item;
+    gsde_chromium_browser_t *browser = browser_from_download_handler(self);
+    char name_buffer[256];
+    copy_cef_string_to_buffer(suggested_name, name_buffer, sizeof(name_buffer));
+    char message[512];
+    snprintf(message, sizeof(message), "CEF browser #%d starting download: %s", browser->browser_id, name_buffer[0] ? name_buffer : "(unnamed)");
+    gsde_log(message);
+    if (callback && callback->cont) {
+        cef_string_t empty_path;
+        memset(&empty_path, 0, sizeof(empty_path));
+        callback->cont(callback, &empty_path, 1);
+    }
+    return 1;
+}
+
+static void CEF_CALLBACK gsde_on_download_updated(
+    cef_download_handler_t *self,
+    cef_browser_t *cef_browser,
+    cef_download_item_t *download_item,
+    cef_download_item_callback_t *callback
+) {
+    (void)cef_browser; (void)callback;
+    gsde_chromium_browser_t *browser = browser_from_download_handler(self);
+    if (!download_item) return;
+    if (download_item->is_complete && download_item->is_complete(download_item)) {
+        char message[128];
+        snprintf(message, sizeof(message), "CEF browser #%d download complete", browser->browser_id);
+        gsde_log(message);
+    } else if (download_item->is_canceled && download_item->is_canceled(download_item)) {
+        char message[128];
+        snprintf(message, sizeof(message), "CEF browser #%d download canceled", browser->browser_id);
+        gsde_log(message);
+    }
+}
+
 static void setup_client_base(cef_base_ref_counted_t *base, size_t size) {
     base->size = size;
     base->add_ref = gsde_client_add_ref;
@@ -618,6 +701,14 @@ static void setup_context_menu_base(cef_base_ref_counted_t *base, size_t size) {
     base->release = gsde_context_menu_release;
     base->has_one_ref = gsde_context_menu_has_one_ref;
     base->has_at_least_one_ref = gsde_context_menu_has_at_least_one_ref;
+}
+
+static void setup_download_base(cef_base_ref_counted_t *base, size_t size) {
+    base->size = size;
+    base->add_ref = gsde_download_add_ref;
+    base->release = gsde_download_release;
+    base->has_one_ref = gsde_download_has_one_ref;
+    base->has_at_least_one_ref = gsde_download_has_at_least_one_ref;
 }
 
 static void set_cef_string(const char *utf8, cef_string_t *out) {
@@ -699,10 +790,12 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     setup_load_base(&browser->load_handler.base, sizeof(browser->load_handler));
     setup_display_base(&browser->display_handler.base, sizeof(browser->display_handler));
     setup_context_menu_base(&browser->context_menu_handler.base, sizeof(browser->context_menu_handler));
+    setup_download_base(&browser->download_handler.base, sizeof(browser->download_handler));
     browser->client.get_life_span_handler = gsde_get_life_span_handler;
     browser->client.get_load_handler = gsde_get_load_handler;
     browser->client.get_display_handler = gsde_get_display_handler;
     browser->client.get_context_menu_handler = gsde_get_context_menu_handler;
+    browser->client.get_download_handler = gsde_get_download_handler;
     browser->life_span_handler.on_before_popup = gsde_on_before_popup;
     browser->life_span_handler.on_after_created = gsde_on_after_created;
     browser->life_span_handler.do_close = gsde_do_close;
@@ -717,6 +810,9 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     browser->display_handler.on_loading_progress_change = gsde_on_loading_progress_change;
     browser->context_menu_handler.run_context_menu = gsde_run_context_menu;
     browser->context_menu_handler.on_context_menu_dismissed = gsde_on_context_menu_dismissed;
+    browser->download_handler.can_download = gsde_can_download;
+    browser->download_handler.on_before_download = gsde_on_before_download;
+    browser->download_handler.on_download_updated = gsde_on_download_updated;
 
     if (cache_path && cache_path[0] != '\0') {
         cef_request_context_settings_t context_settings;
