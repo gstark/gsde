@@ -64,12 +64,17 @@ id = "browser.app"
 kind = "browser"
 url = "http://localhost:5173"
 profile = "dev-app"
+
+[[panes]]
+id = "editor"
+kind = "vscode"
 ```
 
 Supported pane kinds:
 
 - `terminal`: native Ghostty terminal host. Terminal panes must not set `url` or `profile`.
 - `browser`: Chromium/CEF browser pane. Browser panes must set an absolute `url` with a scheme such as `https://` or `http://`.
+- `vscode`: VS Code editor pane. VS Code panes do not require `url`, `command`, `procfile`, or `process`, and must not set browser-only fields (`url`, `profile`) or terminal-only fields (`command`, `procfile`, `process`).
 
 Terminal panes can optionally run a startup command. Use `command` for a direct command line:
 
@@ -107,6 +112,10 @@ Panes can optionally define CSS-style pixel border and padding shorthands. Defau
 border = "0 1"
 padding = "8 12"
 
+[[pane_defaults.vscode]]
+border = "1"
+padding = "0"
+
 [[panes]]
 id = "terminal.main"
 kind = "terminal"
@@ -143,6 +152,7 @@ Examples:
   ```
 
 - `docs/sample-configs/browser-terminal-dev.toml`: terminals on the left, one browser spanning the full right column.
+- `docs/sample-configs/vscode-terminal-dev.toml`: VS Code editor pane beside a terminal.
 - `docs/sample-configs/multiple-named-layouts.toml`: more than one validated layout, with `startup_layout` selecting the one opened initially. Use **Workspace → Switch Layout…** or `Shift-Ctrl-Option-Command-L` to open the layout switcher. Arrow keys or `j`/`k` move through the list, Return activates the selected layout, and Escape closes without changing. Use `Shift-Ctrl-Option-Command-Left`/`Right` to switch directly to the previous or next layout.
 
 ## Validation rules

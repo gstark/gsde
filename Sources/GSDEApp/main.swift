@@ -621,6 +621,8 @@ final class ConfiguredPaneRegistry {
                 persistent: false
             )
             contentView = BrowserPaneView(profile: profile, stateIdentifier: definition.id, initialURL: url)
+        case .vscode:
+            contentView = NSView()
         }
 
         guard !definition.border.isZero || !definition.padding.isZero else { return contentView }

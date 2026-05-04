@@ -1,0 +1,22 @@
+# VS Code + terminal development layout.
+# VS Code panes do not require URL or command fields; GSDE supplies the editor host.
+version = 1
+startup_layout = "dev"
+
+[[pane_defaults.vscode]]
+border = "0 1 0 0"
+padding = "0"
+
+[[panes]]
+id = "editor"
+kind = "vscode"
+
+[[panes]]
+id = "terminal.logs"
+kind = "terminal"
+
+[[layouts]]
+id = "dev"
+areas = [
+    "editor terminal.logs",
+]

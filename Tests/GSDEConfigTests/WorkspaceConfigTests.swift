@@ -93,6 +93,70 @@ struct WorkspaceConfigTests {
         #expect(result.config.panes[1].padding == PaneBoxEdges(top: 4, right: 4, bottom: 4, left: 4))
     }
 
+    @Test("vscode panes load without URL or command fields and inherit defaults")
+    func vscodePaneLoadsWithoutURLOrCommandFields() throws {
+        let directory = try temporaryDirectory()
+        let configURL = directory.appendingPathComponent("vscode.toml")
+        try """
+        version = 1
+        startup_layout = "work"
+
+        [[pane_defaults.vscode]]
+        border = "1 2"
+        padding = "3"
+
+        [[panes]]
+        id = "editor"
+        kind = "vscode"
+
+        [[layouts]]
+        id = "work"
+        areas = ["editor"]
+        """.write(to: configURL, atomically: true, encoding: .utf8)
+
+        let result = WorkspaceConfigLoader(environment: ["GSDE_CONFIG": configURL.path], homeDirectory: directory).load()
+
+        #expect(result.diagnostics.isEmpty)
+        #expect(result.config.startupPaneDefinitions.map(\.kind) == [.vscode])
+        #expect(result.config.panes.first?.url == nil)
+        #expect(result.config.panes.first?.command == nil)
+        #expect(result.config.panes.first?.startupCommand == nil)
+        #expect(result.config.panes.first?.border == PaneBoxEdges(top: 1, right: 2, bottom: 1, left: 2))
+        #expect(result.config.panes.first?.padding == PaneBoxEdges(top: 3, right: 3, bottom: 3, left: 3))
+    }
+
+    @Test("vscode panes reject browser and terminal-only fields")
+    func vscodePanesRejectBrowserAndTerminalOnlyFields() throws {
+        let invalidFields = [
+            (field: "url", line: "url = \"https://example.com\"", message: "vscode panes cannot define url"),
+            (field: "profile", line: "profile = \"shared\"", message: "vscode panes cannot define profile"),
+            (field: "command", line: "command = \"code .\"", message: "vscode panes cannot define command"),
+            (field: "procfile", line: "procfile = \"Procfile.dev\"", message: "vscode panes cannot define procfile"),
+            (field: "process", line: "process = \"web\"", message: "vscode panes cannot define process")
+        ]
+
+        for invalidField in invalidFields {
+            let configURL = try writeConfig(named: "bad-vscode-\(invalidField.field).toml", contents: """
+            version = 1
+            startup_layout = "work"
+
+            [[panes]]
+            id = "editor"
+            kind = "vscode"
+            \(invalidField.line)
+
+            [[layouts]]
+            id = "work"
+            areas = ["editor"]
+            """)
+
+            let result = WorkspaceConfigLoader(environment: ["GSDE_CONFIG": configURL.path]).load()
+
+            #expect(result.source == .builtIn, "\(invalidField.field) should make vscode pane invalid")
+            #expect(result.diagnostics.first?.message.contains(invalidField.message) == true)
+        }
+    }
+
     @Test("pane border and padding use CSS shorthand")
     func paneBorderAndPaddingUseCSSShorthand() throws {
         let directory = try temporaryDirectory()
@@ -458,6 +522,7 @@ struct WorkspaceConfigTests {
         let sampleNames = [
             "terminal-12-33.toml",
             "browser-terminal-dev.toml",
+            "vscode-terminal-dev.toml",
             "multiple-named-layouts.toml",
             "configured-smoke.toml"
         ]

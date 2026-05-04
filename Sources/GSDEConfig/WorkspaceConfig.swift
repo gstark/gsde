@@ -126,6 +126,7 @@ public struct PaneDefinition: Equatable, Sendable {
     public enum Kind: String, Sendable {
         case terminal
         case browser
+        case vscode
     }
 
     public let id: String
@@ -492,6 +493,9 @@ struct WorkspaceConfigTOMLParser {
                 case "pane_defaults.browser":
                     paneDefaultTables[.browser] = paneDefaultTables[.browser] ?? [:]
                     table = .paneDefault(.browser)
+                case "pane_defaults.vscode":
+                    paneDefaultTables[.vscode] = paneDefaultTables[.vscode] ?? [:]
+                    table = .paneDefault(.vscode)
                 case "layouts":
                     layoutTables.append([:])
                     table = .layout(layoutTables.count - 1)
@@ -591,15 +595,10 @@ struct WorkspaceConfigTOMLParser {
         if let process, process.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             throw WorkspaceConfigParseError.invalidValue(field: "\(table).process", value: process)
         }
-        let url = try urlString.map { rawURL in
-            guard let url = URL(string: rawURL), url.scheme != nil else {
-                throw WorkspaceConfigParseError.invalidValue(field: "\(table).url", value: rawURL)
-            }
-            return url
-        }
+        let url: URL?
         switch kind {
         case .terminal:
-            if url != nil {
+            if urlString != nil {
                 throw WorkspaceConfigParseError.invalidValue(field: "\(table).url", value: "terminal panes cannot define url")
             }
             if profile != nil {
@@ -611,9 +610,13 @@ struct WorkspaceConfigTOMLParser {
             if (procfile == nil) != (process == nil) {
                 throw WorkspaceConfigParseError.invalidValue(field: "\(table).procfile", value: "procfile and process must be provided together")
             }
+            url = nil
         case .browser:
-            if url == nil {
+            guard let rawURL = urlString else {
                 throw WorkspaceConfigParseError.missingRequiredField(table: table, field: "url")
+            }
+            guard let parsedURL = URL(string: rawURL), parsedURL.scheme != nil else {
+                throw WorkspaceConfigParseError.invalidValue(field: "\(table).url", value: rawURL)
             }
             if command != nil {
                 throw WorkspaceConfigParseError.invalidValue(field: "\(table).command", value: "browser panes cannot define command")
@@ -624,6 +627,24 @@ struct WorkspaceConfigTOMLParser {
             if process != nil {
                 throw WorkspaceConfigParseError.invalidValue(field: "\(table).process", value: "browser panes cannot define process")
             }
+            url = parsedURL
+        case .vscode:
+            if urlString != nil {
+                throw WorkspaceConfigParseError.invalidValue(field: "\(table).url", value: "vscode panes cannot define url")
+            }
+            if profile != nil {
+                throw WorkspaceConfigParseError.invalidValue(field: "\(table).profile", value: "vscode panes cannot define profile")
+            }
+            if command != nil {
+                throw WorkspaceConfigParseError.invalidValue(field: "\(table).command", value: "vscode panes cannot define command")
+            }
+            if procfile != nil {
+                throw WorkspaceConfigParseError.invalidValue(field: "\(table).procfile", value: "vscode panes cannot define procfile")
+            }
+            if process != nil {
+                throw WorkspaceConfigParseError.invalidValue(field: "\(table).process", value: "vscode panes cannot define process")
+            }
+            url = nil
         }
         return PaneDefinition(
             id: id,
