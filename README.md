@@ -125,6 +125,6 @@ The shim vendors Ghostty's public C header in `Sources/GhosttyShim/include/ghost
 
 ## Current behavior
 
-On first launch, the app opens one native macOS window sized to the union of all connected display frames. Subsequent launches restore the saved window frame and split-pane divider positions. The content area is split into resizable panes: terminal, browser(s), terminal.
+On first launch, the app opens one native macOS window sized to the union of all connected display frames. Subsequent launches restore the saved window frame and split-pane divider positions. Use **GSDE → Reset Window and Pane Layout** to clear the saved layout and maximize across all displays again. The content area is split into resizable panes: terminal, browser(s), terminal.
 
 The browser pane currently provides URL entry, back/forward/reload/stop, in-page find, page zoom, printing, standard context menus, persistent website data, and developer tools entry points. These actions are available from the Browser menu. Browser shortcuts include Cmd-L for the URL bar, Cmd-F find, Cmd-G / Cmd-Shift-G find next/previous, Cmd-R reload, Cmd-Shift-R reload ignoring cache, Cmd-. stop loading, Cmd-[ back, Cmd-] forward, Cmd-+ / Cmd-- / Cmd-0 zoom, Cmd-P print, and Cmd-Option-I DevTools. By default it uses the WebKit fallback so normal app launch stays stable. The dynamically loaded CEF/Chromium backend is available behind `GSDE_ENABLE_CEF=1` / `make run-cef`; it initializes CEF, creates a native browser view, starts renderer helpers, and loads the initial page.

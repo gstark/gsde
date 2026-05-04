@@ -273,6 +273,14 @@ final class ThreePaneWorkspaceView: NSSplitView {
         }
     }
 
+    func resetDividerPositions() {
+        guard bounds.width > 0, panes.count > 1 else { return }
+        UserDefaults.standard.removeObject(forKey: "NSSplitView Subview Frames \(splitAutosaveName)")
+        for index in 1..<panes.count {
+            setPosition(bounds.width * CGFloat(index) / CGFloat(panes.count), ofDividerAt: index - 1)
+        }
+    }
+
     private var hasSavedDividerPositions: Bool {
         UserDefaults.standard.object(forKey: "NSSplitView Subview Frames \(splitAutosaveName)") != nil
     }
@@ -369,6 +377,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let appMenu = NSMenu()
         appMenu.addItem(
+            withTitle: "Reset Window and Pane Layout",
+            action: #selector(resetWindowAndPaneLayout(_:)),
+            keyEquivalent: ""
+        ).target = self
+        appMenu.addItem(.separator())
+        appMenu.addItem(
             withTitle: "Quit GSDE",
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
@@ -413,6 +427,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.target = self
         item.keyEquivalentModifierMask = modifiers
         menu.addItem(item)
+    }
+
+    @objc private func resetWindowAndPaneLayout(_ sender: Any?) {
+        UserDefaults.standard.removeObject(forKey: "NSWindow Frame \(frameAutosaveName)")
+        for paneCount in 3...6 {
+            UserDefaults.standard.removeObject(forKey: "NSSplitView Subview Frames GSDE.WorkspaceSplit.\(paneCount)")
+        }
+        let frame = Self.frameCoveringAllDisplays()
+        window?.setFrame(frame, display: true, animate: true)
+        (window?.contentView as? ThreePaneWorkspaceView)?.resetDividerPositions()
     }
 
     private var activeBrowserPane: BrowserPaneView? {
