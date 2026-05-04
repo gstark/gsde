@@ -75,7 +75,7 @@ Run CLI smoke tests that launch the app, wait for browser creation and successfu
 make smoke-default       # default WebKit launch; verifies CEF stays off
 make smoke-cef           # two browser panes
 make smoke-cef-four      # four browser panes
-make smoke-cef-graceful  # two panes plus graceful browser close/shutdown
+make smoke-cef-graceful  # two panes plus graceful browser close/shutdown and no lingering helpers
 make smoke-cef-repeat    # repeated graceful launch/shutdown
 make verify-cef          # all CEF smoke tests
 make verify              # default smoke plus all CEF smoke tests

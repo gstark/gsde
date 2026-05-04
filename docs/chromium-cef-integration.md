@@ -44,7 +44,7 @@ Current verified CEF paths:
 make smoke-default       # default launch verifies CEF stays off
 make smoke-cef           # 2 browser panes load HTTP 200
 make smoke-cef-four      # 4 browser panes load HTTP 200
-make smoke-cef-graceful  # browser panes close and CEF shuts down cleanly
+make smoke-cef-graceful  # browser panes close, CEF shuts down, helpers exit
 make smoke-cef-repeat    # repeated graceful launch/shutdown
 make verify-cef          # all CEF smoke tests
 make verify              # default smoke plus all CEF smoke tests

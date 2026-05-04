@@ -69,7 +69,15 @@ for _ in $(seq 1 "$WAIT_SECONDS"); do
           cat "$LOG" >&2
           exit 1
         fi
-        echo "CEF smoke test passed: $created_count browser(s), $loaded_browser_count browser(s) loaded, $closed_browser_count browser(s) closed gracefully"
+        sleep 1
+        lingering_helpers=$(pgrep -fl 'GSDE Helper' || true)
+        if [[ -n "$lingering_helpers" ]]; then
+          echo "CEF helper process(es) still running after graceful quit:" >&2
+          echo "$lingering_helpers" >&2
+          cat "$LOG" >&2
+          exit 1
+        fi
+        echo "CEF smoke test passed: $created_count browser(s), $loaded_browser_count browser(s) loaded, $closed_browser_count browser(s) closed gracefully, no helper processes lingered"
         cat "$LOG"
         exit 0
       fi
