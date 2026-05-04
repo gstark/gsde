@@ -976,6 +976,71 @@ void gsde_chromium_browser_print(gsde_chromium_browser_t *browser) {
 #endif
 }
 
+static cef_frame_t *main_frame_for_browser(gsde_chromium_browser_t *browser) {
+#if GSDE_HAVE_CEF_HEADERS
+    if (!browser || !browser->browser || !browser->browser->get_main_frame) return NULL;
+    return browser->browser->get_main_frame(browser->browser);
+#else
+    (void)browser;
+    return NULL;
+#endif
+}
+
+void gsde_chromium_browser_cut(gsde_chromium_browser_t *browser) {
+#if GSDE_HAVE_CEF_HEADERS
+    cef_frame_t *frame = main_frame_for_browser(browser);
+    if (!frame) return;
+    if (frame->cut) frame->cut(frame);
+    if (frame->base.release) frame->base.release((cef_base_ref_counted_t *)frame);
+#else
+    (void)browser;
+#endif
+}
+
+void gsde_chromium_browser_copy(gsde_chromium_browser_t *browser) {
+#if GSDE_HAVE_CEF_HEADERS
+    cef_frame_t *frame = main_frame_for_browser(browser);
+    if (!frame) return;
+    if (frame->copy) frame->copy(frame);
+    if (frame->base.release) frame->base.release((cef_base_ref_counted_t *)frame);
+#else
+    (void)browser;
+#endif
+}
+
+void gsde_chromium_browser_paste(gsde_chromium_browser_t *browser) {
+#if GSDE_HAVE_CEF_HEADERS
+    cef_frame_t *frame = main_frame_for_browser(browser);
+    if (!frame) return;
+    if (frame->paste) frame->paste(frame);
+    if (frame->base.release) frame->base.release((cef_base_ref_counted_t *)frame);
+#else
+    (void)browser;
+#endif
+}
+
+void gsde_chromium_browser_select_all(gsde_chromium_browser_t *browser) {
+#if GSDE_HAVE_CEF_HEADERS
+    cef_frame_t *frame = main_frame_for_browser(browser);
+    if (!frame) return;
+    if (frame->select_all) frame->select_all(frame);
+    if (frame->base.release) frame->base.release((cef_base_ref_counted_t *)frame);
+#else
+    (void)browser;
+#endif
+}
+
+void gsde_chromium_browser_view_source(gsde_chromium_browser_t *browser) {
+#if GSDE_HAVE_CEF_HEADERS
+    cef_frame_t *frame = main_frame_for_browser(browser);
+    if (!frame) return;
+    if (frame->view_source) frame->view_source(frame);
+    if (frame->base.release) frame->base.release((cef_base_ref_counted_t *)frame);
+#else
+    (void)browser;
+#endif
+}
+
 void gsde_chromium_browser_focus(gsde_chromium_browser_t *browser, int focused) {
 #if GSDE_HAVE_CEF_HEADERS
     if (!browser || !browser->browser) return;

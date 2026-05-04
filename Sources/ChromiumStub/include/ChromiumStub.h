@@ -40,6 +40,11 @@ void gsde_chromium_browser_zoom_in(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_zoom_out(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_zoom_reset(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_print(gsde_chromium_browser_t *browser);
+void gsde_chromium_browser_cut(gsde_chromium_browser_t *browser);
+void gsde_chromium_browser_copy(gsde_chromium_browser_t *browser);
+void gsde_chromium_browser_paste(gsde_chromium_browser_t *browser);
+void gsde_chromium_browser_select_all(gsde_chromium_browser_t *browser);
+void gsde_chromium_browser_view_source(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_focus(gsde_chromium_browser_t *browser, int focused);
 void gsde_chromium_browser_show_devtools(gsde_chromium_browser_t *browser);
 

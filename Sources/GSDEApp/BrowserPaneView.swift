@@ -221,9 +221,30 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         menu.addItem(stopItem)
 
         menu.addItem(.separator())
+        let cutItem = NSMenuItem(title: "Cut", action: #selector(cutSelection), keyEquivalent: "")
+        cutItem.target = self
+        menu.addItem(cutItem)
+
+        let copyItem = NSMenuItem(title: "Copy", action: #selector(copySelection), keyEquivalent: "")
+        copyItem.target = self
+        menu.addItem(copyItem)
+
+        let pasteItem = NSMenuItem(title: "Paste", action: #selector(pasteClipboard), keyEquivalent: "")
+        pasteItem.target = self
+        menu.addItem(pasteItem)
+
+        let selectAllItem = NSMenuItem(title: "Select All", action: #selector(selectAllContent), keyEquivalent: "")
+        selectAllItem.target = self
+        menu.addItem(selectAllItem)
+
+        menu.addItem(.separator())
         let printItem = NSMenuItem(title: "Print…", action: #selector(printPage), keyEquivalent: "")
         printItem.target = self
         menu.addItem(printItem)
+
+        let viewSourceItem = NSMenuItem(title: "View Source", action: #selector(viewSource), keyEquivalent: "")
+        viewSourceItem.target = self
+        menu.addItem(viewSourceItem)
 
         let devToolsItem = NSMenuItem(title: "Developer Tools", action: #selector(showDeveloperTools), keyEquivalent: "")
         devToolsItem.target = self
@@ -499,6 +520,46 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             gsde_chromium_browser_zoom_reset(cefBrowser)
         } else {
             setWebKitPageZoom(1.0)
+        }
+    }
+
+    @objc private func cutSelection() {
+        if let cefBrowser {
+            gsde_chromium_browser_cut(cefBrowser)
+        } else {
+            NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: self)
+        }
+    }
+
+    @objc private func copySelection() {
+        if let cefBrowser {
+            gsde_chromium_browser_copy(cefBrowser)
+        } else {
+            NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: self)
+        }
+    }
+
+    @objc private func pasteClipboard() {
+        if let cefBrowser {
+            gsde_chromium_browser_paste(cefBrowser)
+        } else {
+            NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: self)
+        }
+    }
+
+    @objc private func selectAllContent() {
+        if let cefBrowser {
+            gsde_chromium_browser_select_all(cefBrowser)
+        } else {
+            NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: self)
+        }
+    }
+
+    @objc private func viewSource() {
+        if let cefBrowser {
+            gsde_chromium_browser_view_source(cefBrowser)
+        } else {
+            NSSound.beep()
         }
     }
 
