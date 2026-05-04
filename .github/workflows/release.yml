@@ -22,6 +22,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Select Xcode with Swift 6
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Verify Swift version
+        run: swift --version
+
       - name: Resolve version
         id: version
         shell: bash
@@ -61,8 +69,26 @@ jobs:
           body: |
             SHA-256: `${{ steps.checksum.outputs.sha256 }}`
 
-            Update `Formula/gsde.rb` with:
+      - name: Update Homebrew formula on main
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          ARCHIVE: ${{ steps.checksum.outputs.archive }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-            ```sh
-            scripts/update-homebrew-formula.sh ${{ steps.version.outputs.version }} ${{ steps.checksum.outputs.archive }} ${{ github.repository }}
-            ```
+          git fetch origin main
+          git checkout main
+
+          scripts/update-homebrew-formula.sh "$VERSION" "$ARCHIVE" "$REPOSITORY"
+
+          if git diff --quiet -- Formula/gsde.rb; then
+            echo "Formula/gsde.rb is already current."
+            exit 0
+          fi
+
+          git add Formula/gsde.rb
+          git commit -m "Update Homebrew formula for v${VERSION}"
+          git push origin main
