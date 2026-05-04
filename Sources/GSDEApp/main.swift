@@ -178,8 +178,19 @@ final class GhosttyHostView: NSView {
         }
     }
 
+    func pasteTextFromPasteboard() {
+        guard let host,
+              let text = NSPasteboard.general.string(forType: .string),
+              !text.isEmpty
+        else { return }
+        text.withCString { pointer in
+            gsde_ghostty_host_text(host, pointer, UInt(text.utf8.count))
+        }
+    }
+
     private func markActivePane() {
         Self.activePane = self
+        BrowserPaneView.activePane = nil
         NotificationCenter.default.post(name: .gsdeActivePaneDidChange, object: self)
     }
 
@@ -688,6 +699,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         workspaceMenu.addItem(.separator())
         addMenuItem("Reset Window and Pane Layout", #selector(resetWindowAndPaneLayout(_:)), "", modifiers: [], to: workspaceMenu)
 
+        let terminalMenuItem = NSMenuItem()
+        terminalMenuItem.title = "Terminal"
+        mainMenu.addItem(terminalMenuItem)
+        let terminalMenu = NSMenu(title: "Terminal")
+        terminalMenuItem.submenu = terminalMenu
+        addMenuItem("Paste", #selector(terminalPaste(_:)), "v", to: terminalMenu)
+
         let browserMenuItem = NSMenuItem()
         browserMenuItem.title = "Browser"
         mainMenu.addItem(browserMenuItem)
@@ -792,6 +810,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         switch menuItem.action {
         case #selector(closeActivePane(_:)):
             return (window?.contentView as? ThreePaneWorkspaceView)?.canCloseActivePane ?? false
+        case #selector(terminalPaste(_:)):
+            return activeTerminalPane != nil && NSPasteboard.general.string(forType: .string) != nil
         case #selector(closeOtherPanes(_:)):
             return (window?.contentView as? ThreePaneWorkspaceView)?.canCloseOtherPanes ?? false
         case #selector(duplicateActiveBrowserPane(_:)):
@@ -826,6 +846,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var activeBrowserPane: BrowserPaneView? {
         BrowserPaneView.activePane
     }
+
+    private var activeTerminalPane: GhosttyHostView? {
+        GhosttyHostView.activePane
+    }
+
+    @objc private func terminalPaste(_ sender: Any?) { activeTerminalPane?.pasteTextFromPasteboard() }
 
     @objc private func browserFocusLocation(_ sender: Any?) { activeBrowserPane?.browserFocusLocation() }
     @objc private func browserOpenFind(_ sender: Any?) { activeBrowserPane?.browserOpenFind() }

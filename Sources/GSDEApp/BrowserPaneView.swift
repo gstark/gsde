@@ -420,6 +420,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
 
     private func markActivePane() {
         Self.activePane = self
+        GhosttyHostView.activePane = nil
         updateWindowTitleForActivePane()
         NotificationCenter.default.post(name: .gsdeActivePaneDidChange, object: self)
     }
