@@ -648,9 +648,7 @@ final class VSCodePaneView: NSView {
 
     override func becomeFirstResponder() -> Bool {
         markActivePane()
-        if let cefBrowser {
-            gsde_chromium_browser_focus(cefBrowser, 1)
-        }
+        focusCEFBrowser()
         return true
     }
 
@@ -662,12 +660,27 @@ final class VSCodePaneView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        focusBrowserContent()
+        super.mouseDown(with: event)
+    }
+
+    func focusBrowserContent() {
         markActivePane()
-        window?.makeFirstResponder(self)
+        focusCEFBrowser()
+        guard let window else { return }
+        if let cefNativeView, window.firstResponder !== cefNativeView {
+            if !window.makeFirstResponder(cefNativeView), window.firstResponder !== self {
+                _ = window.makeFirstResponder(self)
+            }
+        } else if cefNativeView == nil, window.firstResponder !== self {
+            _ = window.makeFirstResponder(self)
+        }
+    }
+
+    private func focusCEFBrowser() {
         if let cefBrowser {
             gsde_chromium_browser_focus(cefBrowser, 1)
         }
-        super.mouseDown(with: event)
     }
 
     private func commonInit() {
@@ -730,11 +743,7 @@ final class VSCodePaneView: NSView {
                   self.window === event.window,
                   self.isEventInsidePane(event)
             else { return event }
-            self.markActivePane()
-            self.window?.makeFirstResponder(self)
-            if let cefBrowser = self.cefBrowser {
-                gsde_chromium_browser_focus(cefBrowser, 1)
-            }
+            self.focusBrowserContent()
             return event
         }
     }
@@ -1221,7 +1230,7 @@ final class MosaicWorkspaceView: NSView {
         } else if let terminalPane = pane as? GhosttyHostView {
             window?.makeFirstResponder(terminalPane)
         } else if let vscodePane = pane as? VSCodePaneView {
-            window?.makeFirstResponder(vscodePane)
+            vscodePane.focusBrowserContent()
         } else if let focusable = pane.subviews.first(where: { $0.acceptsFirstResponder }) {
             window?.makeFirstResponder(focusable)
         } else {
@@ -1648,7 +1657,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
         } else if let terminalPane = activePane as? GhosttyHostView {
             window?.makeFirstResponder(terminalPane)
         } else if let vscodePane = activePane as? VSCodePaneView {
-            window?.makeFirstResponder(vscodePane)
+            vscodePane.focusBrowserContent()
         }
     }
 
@@ -1733,7 +1742,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
         } else if let terminalPane = pane as? GhosttyHostView {
             window?.makeFirstResponder(terminalPane)
         } else if let vscodePane = pane as? VSCodePaneView {
-            window?.makeFirstResponder(vscodePane)
+            vscodePane.focusBrowserContent()
         } else if let focusable = pane.subviews.first(where: { $0.acceptsFirstResponder }) {
             window?.makeFirstResponder(focusable)
         } else {
@@ -2253,6 +2262,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if activeVSCodePane != nil,
+           Self.shouldDisableMenuActionForVSCodePassthrough(menuItem.action) {
+            return false
+        }
+
         switch menuItem.action {
         case #selector(showLayoutSwitcher(_:)),
              #selector(switchToPreviousLayout(_:)),
@@ -2295,12 +2309,75 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
+    static func verifyVSCodeShortcutPassthroughPolicyForCommandLine() {
+        let appOwnedSelectors: [Selector] = [
+            #selector(browserOpenFind(_:)),
+            #selector(browserFocusLocation(_:)),
+            #selector(browserPrint(_:)),
+            #selector(closeActivePane(_:)),
+            #selector(newBrowserPane(_:)),
+            #selector(terminalCopy(_:))
+        ]
+        let globalSelectors: [Selector] = [
+            #selector(showLayoutSwitcher(_:)),
+            #selector(switchToPreviousLayout(_:)),
+            #selector(switchToNextLayout(_:)),
+            #selector(NSApplication.terminate(_:))
+        ]
+        precondition(appOwnedSelectors.allSatisfy(shouldDisableMenuActionForVSCodePassthrough(_:)))
+        precondition(globalSelectors.allSatisfy { !shouldDisableMenuActionForVSCodePassthrough($0) })
+    }
+
+    private static func shouldDisableMenuActionForVSCodePassthrough(_ action: Selector?) -> Bool {
+        switch action {
+        case #selector(newBrowserPane(_:)),
+             #selector(newTerminalPane(_:)),
+             #selector(duplicateActiveBrowserPane(_:)),
+             #selector(closeActivePane(_:)),
+             #selector(closeOtherPanes(_:)),
+             #selector(focusNextPane(_:)),
+             #selector(focusPreviousPane(_:)),
+             #selector(moveActivePaneLeft(_:)),
+             #selector(moveActivePaneRight(_:)),
+             #selector(terminalCopy(_:)),
+             #selector(terminalPaste(_:)),
+             #selector(browserFocusLocation(_:)),
+             #selector(browserOpenFind(_:)),
+             #selector(browserFindNext(_:)),
+             #selector(browserFindPrevious(_:)),
+             #selector(browserGoBack(_:)),
+             #selector(browserGoForward(_:)),
+             #selector(browserReload(_:)),
+             #selector(browserReloadIgnoringCache(_:)),
+             #selector(browserStopLoading(_:)),
+             #selector(browserCut(_:)),
+             #selector(browserCopy(_:)),
+             #selector(browserPaste(_:)),
+             #selector(browserSelectAll(_:)),
+             #selector(browserCopyPageURL(_:)),
+             #selector(browserOpenPageInDefaultBrowser(_:)),
+             #selector(browserViewSource(_:)),
+             #selector(browserZoomIn(_:)),
+             #selector(browserZoomOut(_:)),
+             #selector(browserZoomReset(_:)),
+             #selector(browserPrint(_:)),
+             #selector(browserShowDeveloperTools(_:)):
+            return true
+        default:
+            return false
+        }
+    }
+
     private var activeBrowserPane: BrowserPaneView? {
         BrowserPaneView.activePane
     }
 
     private var activeTerminalPane: GhosttyHostView? {
         GhosttyHostView.activePane
+    }
+
+    private var activeVSCodePane: VSCodePaneView? {
+        VSCodePaneView.activePane
     }
 
     @objc private func terminalCopy(_ sender: Any?) { activeTerminalPane?.copySelectionToPasteboard() }
@@ -2343,6 +2420,10 @@ if ProcessInfo.processInfo.environment["GSDE_VALIDATE_CONFIG"] != nil {
     print("panes: \(result.config.panes.count)")
     print("layouts: \(result.config.validatedLayouts.map(\.id).joined(separator: ", "))")
     print("startup_layout: \(result.config.startupLayout)")
+    exit(0)
+} else if ProcessInfo.processInfo.environment["GSDE_VERIFY_VSCODE_SHORTCUT_POLICY"] != nil {
+    AppDelegate.verifyVSCodeShortcutPassthroughPolicyForCommandLine()
+    print("VS Code shortcut passthrough policy valid")
     exit(0)
 } else if ProcessInfo.processInfo.environment["GSDE_VERIFY_WORKSPACE_STARTUP"] != nil {
     let workspaceView = AppDelegate.makeWorkspaceView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
