@@ -45,9 +45,9 @@ trap cleanup EXIT
 for _ in $(seq 1 "$WAIT_SECONDS"); do
   if [[ -f "$LOG" ]]; then
     created_count=$(grep -Ec 'CEF browser #[0-9]+ created with native view' "$LOG" || true)
-    loaded_count=$(grep -Ec 'CEF browser #[0-9]+ load end: HTTP 200' "$LOG" || true)
-    if [[ "$created_count" -ge "$BROWSER_PANES" && "$loaded_count" -ge "$BROWSER_PANES" ]]; then
-      echo "CEF smoke test passed: $created_count browser(s), $loaded_count successful load(s)"
+    loaded_browser_count=$(grep -E 'CEF browser #[0-9]+ load end: HTTP 200' "$LOG" | sed -E 's/.*CEF browser #([0-9]+) load end.*/\1/' | sort -u | wc -l | tr -d ' ' || true)
+    if [[ "$created_count" -ge "$BROWSER_PANES" && "$loaded_browser_count" -ge "$BROWSER_PANES" ]]; then
+      echo "CEF smoke test passed: $created_count browser(s), $loaded_browser_count browser(s) loaded successfully"
       cat "$LOG"
       exit 0
     fi
@@ -62,6 +62,9 @@ done
 
 echo "CEF smoke test timed out after ${WAIT_SECONDS}s" >&2
 if [[ -f "$LOG" ]]; then
+  created_count=$(grep -Ec 'CEF browser #[0-9]+ created with native view' "$LOG" || true)
+  loaded_browser_count=$(grep -E 'CEF browser #[0-9]+ load end: HTTP 200' "$LOG" | sed -E 's/.*CEF browser #([0-9]+) load end.*/\1/' | sort -u | wc -l | tr -d ' ' || true)
+  echo "Observed $created_count created browser(s), $loaded_browser_count browser(s) loaded successfully" >&2
   cat "$LOG" >&2
 fi
 cat /tmp/gsde-cef-smoke.err >&2 || true
