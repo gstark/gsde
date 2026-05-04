@@ -77,8 +77,9 @@ make smoke-cef           # two browser panes
 make smoke-cef-four      # four browser panes
 make smoke-cef-graceful  # two panes plus graceful browser close/shutdown and no lingering helpers
 make smoke-cef-repeat    # repeated graceful launch/shutdown
-make verify-cef          # all CEF smoke tests
-make verify              # default smoke plus all CEF smoke tests
+make verify-cef-bundle   # bundled CEF framework/helper app packaging checks
+make verify-cef          # CEF bundle checks plus all CEF smoke tests
+make verify              # default smoke plus all CEF verification
 ```
 
 Reset saved app state and Chromium profile data:

@@ -46,8 +46,9 @@ make smoke-cef           # 2 browser panes load HTTP 200
 make smoke-cef-four      # 4 browser panes load HTTP 200
 make smoke-cef-graceful  # browser panes close, CEF shuts down, helpers exit
 make smoke-cef-repeat    # repeated graceful launch/shutdown
-make verify-cef          # all CEF smoke tests
-make verify              # default smoke plus all CEF smoke tests
+make verify-cef-bundle   # framework/helper app packaging checks
+make verify-cef          # CEF bundle checks plus all CEF smoke tests
+make verify              # default smoke plus all CEF verification
 ```
 
 ## Desired CEF bridge
