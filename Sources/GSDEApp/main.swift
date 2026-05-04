@@ -27,7 +27,9 @@ final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        window?.makeFirstResponder(self)
+        if window?.firstResponder == nil {
+            window?.makeFirstResponder(self)
+        }
         createHostIfNeeded()
     }
 
@@ -553,6 +555,25 @@ final class MosaicWorkspaceView: NSView {
         }
     }
 
+    func focusInitialPane() {
+        guard let layout = config.validatedLayouts.first(where: { $0.id == activeLayoutID }),
+              let firstVisiblePaneID = layout.slots.first?.paneID
+        else { return }
+        focus(paneRegistry.view(for: firstVisiblePaneID))
+    }
+
+    private func focus(_ pane: NSView) {
+        if let browserPane = pane as? BrowserPaneView {
+            window?.makeFirstResponder(browserPane)
+        } else if let terminalPane = pane as? GhosttyHostView {
+            window?.makeFirstResponder(terminalPane)
+        } else if let focusable = pane.subviews.first(where: { $0.acceptsFirstResponder }) {
+            window?.makeFirstResponder(focusable)
+        } else {
+            window?.makeFirstResponder(pane)
+        }
+    }
+
     private func commonInit() {
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
@@ -741,6 +762,15 @@ final class ThreePaneWorkspaceView: NSSplitView {
         autosaveName = splitAutosaveName
 
         initialPanes.forEach { addPane($0, after: nil) }
+    }
+
+    func focusInitialPane() {
+        if let activePane = activeArrangedPane,
+           let activeIndex = arrangedSubviews.firstIndex(of: activePane) {
+            focusPane(at: activeIndex)
+        } else {
+            focusPane(at: 0)
+        }
     }
 
     override func layout() {
@@ -981,6 +1011,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         self.window = window
         NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.async { [weak window] in
+            Self.focusInitialPane(in: window?.contentView)
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -1007,6 +1040,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             gsde_chromium_do_message_loop_work()
             if gsde_chromium_live_browser_count() == 0 { break }
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
+    }
+
+    private static func focusInitialPane(in contentView: NSView?) {
+        if let workspace = contentView as? ThreePaneWorkspaceView {
+            workspace.focusInitialPane()
+        } else if let workspace = contentView as? MosaicWorkspaceView {
+            workspace.focusInitialPane()
+        } else if let focusable = contentView?.subviews.first(where: { $0.acceptsFirstResponder }) {
+            contentView?.window?.makeFirstResponder(focusable)
         }
     }
 

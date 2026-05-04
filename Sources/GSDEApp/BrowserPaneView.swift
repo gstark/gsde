@@ -104,11 +104,11 @@ final class BrowserPaneView: NSView {
         installCEFMouseFocusMonitorIfNeeded()
         installContextMenuMonitorIfNeeded()
         createCEFBrowserIfPossible()
-        if Self.activePane == nil {
+        if Self.activePane == nil, GhosttyHostView.activePane == nil {
             Self.activePane = self
         }
         if window?.firstResponder == nil {
-            window?.makeFirstResponder(browserContainer)
+            window?.makeFirstResponder(self)
         }
     }
 
