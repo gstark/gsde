@@ -555,6 +555,8 @@ final class MosaicWorkspaceView: NSView {
     var canSwitchLayouts: Bool { config.validatedLayouts.count > 1 }
     var layoutIDs: [String] { config.validatedLayouts.map(\.id) }
     var currentLayoutID: String { activeLayoutID }
+    var layoutFlashEnabled: Bool { config.layoutFlashEnabled }
+    var layoutFlashDuration: TimeInterval { config.layoutFlashDuration }
 
     func applyLayout(id layoutID: String) {
         guard config.validatedLayouts.contains(where: { $0.id == layoutID }) else {
@@ -562,6 +564,17 @@ final class MosaicWorkspaceView: NSView {
         }
         activeLayoutID = layoutID
         applyActiveLayout()
+    }
+
+    @discardableResult
+    func switchLayout(offset: Int) -> String? {
+        guard canSwitchLayouts,
+              let currentIndex = layoutIDs.firstIndex(of: activeLayoutID)
+        else { return nil }
+        let nextIndex = (currentIndex + offset + layoutIDs.count) % layoutIDs.count
+        let layoutID = layoutIDs[nextIndex]
+        applyLayout(id: layoutID)
+        return layoutID
     }
 
     override func layout() {
@@ -637,18 +650,35 @@ final class MosaicWorkspaceView: NSView {
             preconditionFailure("Layout references unknown configured layout ID \(activeLayoutID)")
         }
 
-        for paneView in paneRegistry.allViews() {
-            paneView.isHidden = true
+        let assignments = MosaicLayoutFrames.frames(for: layout, in: bounds)
+        let visiblePaneIDs = Set(assignments.map(\.paneID))
+
+        for paneID in config.panes.map(\.id) where !visiblePaneIDs.contains(paneID) {
+            let paneView = paneRegistry.view(for: paneID)
+            if !paneView.isHidden {
+                paneView.isHidden = true
+            }
         }
 
-        for assignment in MosaicLayoutFrames.frames(for: layout, in: bounds) {
+        for assignment in assignments {
             let paneView = paneRegistry.view(for: assignment.paneID)
             if paneView.superview !== self {
                 addSubview(paneView)
             }
-            paneView.frame = assignment.frame
-            paneView.isHidden = false
+            if !Self.framesMatch(paneView.frame, assignment.frame) {
+                paneView.frame = assignment.frame
+            }
+            if paneView.isHidden {
+                paneView.isHidden = false
+            }
         }
+    }
+
+    private static func framesMatch(_ lhs: NSRect, _ rhs: NSRect) -> Bool {
+        abs(lhs.origin.x - rhs.origin.x) < 0.5
+            && abs(lhs.origin.y - rhs.origin.y) < 0.5
+            && abs(lhs.size.width - rhs.size.width) < 0.5
+            && abs(lhs.size.height - rhs.size.height) < 0.5
     }
 }
 
@@ -1030,6 +1060,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var chromiumMessageLoopTimer: Timer?
     private var layoutSwitcherKeyMonitor: Any?
     private var layoutSwitcherPanel: LayoutSwitcherPanel?
+    private var layoutFlashPanels: [LayoutFlashPanel] = []
     private weak var responderBeforeLayoutSwitcher: NSResponder?
     private var didPrepareChromiumShutdown = false
     private let frameAutosaveName = "GSDE.MainWindow"
@@ -1106,18 +1137,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func installLayoutSwitcherShortcutMonitor() {
         guard layoutSwitcherKeyMonitor == nil else { return }
         layoutSwitcherKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self,
-                  self.isLayoutSwitcherShortcut(event)
-            else { return event }
-            self.showLayoutSwitcher(nil)
-            return nil
+            guard let self else { return event }
+            if self.isLayoutSwitcherShortcut(event) {
+                self.showLayoutSwitcher(nil)
+                return nil
+            }
+            if self.isLayoutStepShortcut(event, keyCode: 123) {
+                self.switchToPreviousLayout(nil)
+                return nil
+            }
+            if self.isLayoutStepShortcut(event, keyCode: 124) {
+                self.switchToNextLayout(nil)
+                return nil
+            }
+            return event
         }
     }
 
     private func isLayoutSwitcherShortcut(_ event: NSEvent) -> Bool {
+        isLayoutShortcut(event, keyCode: 37)
+    }
+
+    private func isLayoutStepShortcut(_ event: NSEvent, keyCode: UInt16) -> Bool {
+        isLayoutShortcut(event, keyCode: keyCode)
+    }
+
+    private func isLayoutShortcut(_ event: NSEvent, keyCode: UInt16) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let requiredFlags: NSEvent.ModifierFlags = [.command, .option, .control]
-        return flags.isSuperset(of: requiredFlags) && event.keyCode == 37
+        return flags.isSuperset(of: requiredFlags) && event.keyCode == keyCode
     }
 
     private func initializeChromiumIfAvailable() {
@@ -1242,6 +1290,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         addMenuItem("Focus Next Pane", #selector(focusNextPane(_:)), "}", to: workspaceMenu)
         addMenuItem("Focus Previous Pane", #selector(focusPreviousPane(_:)), "{", to: workspaceMenu)
         addMenuItem("Switch Layout…", #selector(showLayoutSwitcher(_:)), "l", modifiers: [.command, .option, .control], to: workspaceMenu)
+        addMenuItem("Previous Layout", #selector(switchToPreviousLayout(_:)), String(UnicodeScalar(NSLeftArrowFunctionKey)!), modifiers: [.command, .option, .control], to: workspaceMenu)
+        addMenuItem("Next Layout", #selector(switchToNextLayout(_:)), String(UnicodeScalar(NSRightArrowFunctionKey)!), modifiers: [.command, .option, .control], to: workspaceMenu)
         addMenuItem("Move Pane Left", #selector(moveActivePaneLeft(_:)), "{", modifiers: [.command, .shift], to: workspaceMenu)
         addMenuItem("Move Pane Right", #selector(moveActivePaneRight(_:)), "}", modifiers: [.command, .shift], to: workspaceMenu)
         workspaceMenu.addItem(.separator())
@@ -1340,6 +1390,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         (window?.contentView as? ThreePaneWorkspaceView)?.moveActivePaneRight()
     }
 
+    @objc private func switchToPreviousLayout(_ sender: Any?) {
+        guard let workspace = window?.contentView as? MosaicWorkspaceView,
+              workspace.canSwitchLayouts
+        else {
+            NSSound.beep()
+            return
+        }
+        if let layoutID = workspace.switchLayout(offset: -1) {
+            showLayoutFlash(layoutID: layoutID, workspace: workspace)
+        }
+    }
+
+    @objc private func switchToNextLayout(_ sender: Any?) {
+        guard let workspace = window?.contentView as? MosaicWorkspaceView,
+              workspace.canSwitchLayouts
+        else {
+            NSSound.beep()
+            return
+        }
+        if let layoutID = workspace.switchLayout(offset: 1) {
+            showLayoutFlash(layoutID: layoutID, workspace: workspace)
+        }
+    }
+
+    private func showLayoutFlash(layoutID: String, workspace: MosaicWorkspaceView) {
+        guard workspace.layoutFlashEnabled, workspace.layoutFlashDuration > 0 else { return }
+        layoutFlashPanels.forEach { $0.close() }
+        layoutFlashPanels = NSScreen.screens.map { screen in
+            let panel = LayoutFlashPanel(layoutID: layoutID, screen: screen)
+            panel.orderFront(nil)
+            return panel
+        }
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            layoutFlashPanels.forEach { $0.animator().alphaValue = 1 }
+        }
+
+        let displayDuration = workspace.layoutFlashDuration
+        DispatchQueue.main.asyncAfter(deadline: .now() + displayDuration) { [weak self] in
+            guard let self else { return }
+            let panels = self.layoutFlashPanels
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.18
+                panels.forEach { $0.animator().alphaValue = 0 }
+            } completionHandler: {
+                DispatchQueue.main.async { [weak self] in
+                    panels.forEach { $0.close() }
+                    self?.layoutFlashPanels.removeAll { panel in panels.contains(where: { $0 === panel }) }
+                }
+            }
+        }
+    }
+
     @objc private func showLayoutSwitcher(_ sender: Any?) {
         if layoutSwitcherPanel != nil {
             dismissLayoutSwitcher(restoreFocus: true)
@@ -1406,7 +1510,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
-        case #selector(showLayoutSwitcher(_:)):
+        case #selector(showLayoutSwitcher(_:)),
+             #selector(switchToPreviousLayout(_:)),
+             #selector(switchToNextLayout(_:)):
             return (window?.contentView as? MosaicWorkspaceView)?.canSwitchLayouts ?? false
         case #selector(closeActivePane(_:)):
             return (window?.contentView as? ThreePaneWorkspaceView)?.canCloseActivePane ?? false

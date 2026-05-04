@@ -212,3 +212,81 @@ private final class LayoutSwitcherView: NSView {
         return index
     }
 }
+
+final class LayoutFlashPanel: NSPanel {
+    init(layoutID: String, screen: NSScreen) {
+        let width: CGFloat = 460
+        let height: CGFloat = 148
+        let screenFrame = screen.visibleFrame
+        let frame = NSRect(
+            x: screenFrame.midX - width / 2,
+            y: screenFrame.midY - height / 2,
+            width: width,
+            height: height
+        )
+
+        super.init(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        ignoresMouseEvents = true
+        level = .modalPanel
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        alphaValue = 0
+        contentView = LayoutFlashView(frame: NSRect(origin: .zero, size: frame.size), layoutID: layoutID)
+    }
+
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
+private final class LayoutFlashView: NSView {
+    private let layoutID: String
+
+    init(frame frameRect: NSRect, layoutID: String) {
+        self.layoutID = layoutID
+        super.init(frame: frameRect)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) {
+        preconditionFailure("LayoutFlashView requires a layout ID")
+    }
+
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        let backgroundPath = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 18, yRadius: 18)
+        NSColor(calibratedWhite: 0.08, alpha: 0.95).setFill()
+        backgroundPath.fill()
+        NSColor.controlAccentColor.withAlphaComponent(0.8).setStroke()
+        backgroundPath.lineWidth = 2
+        backgroundPath.stroke()
+
+        "Layout".draw(
+            in: NSRect(x: 24, y: 26, width: bounds.width - 48, height: 20),
+            withAttributes: [
+                .font: NSFont.systemFont(ofSize: 14, weight: .medium),
+                .foregroundColor: NSColor(white: 0.72, alpha: 1.0)
+            ]
+        )
+
+        layoutID.draw(
+            in: NSRect(x: 24, y: 55, width: bounds.width - 48, height: 48),
+            withAttributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: 32, weight: .semibold),
+                .foregroundColor: NSColor.white
+            ]
+        )
+
+        "Ctrl-Option-Command-Left/Right".draw(
+            in: NSRect(x: 24, y: 108, width: bounds.width - 48, height: 18),
+            withAttributes: [
+                .font: NSFont.systemFont(ofSize: 12),
+                .foregroundColor: NSColor(white: 0.62, alpha: 1.0)
+            ]
+        )
+    }
+}

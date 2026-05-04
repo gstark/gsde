@@ -9,19 +9,25 @@ public struct WorkspaceConfig: Equatable, Sendable {
     public let layouts: [LayoutDefinition]
     public let validatedLayouts: [ValidatedMosaicLayout]
     public let startupLayout: String
+    public let layoutFlashEnabled: Bool
+    public let layoutFlashDuration: Double
 
     public init(
         version: Int,
         panes: [PaneDefinition],
         layouts: [LayoutDefinition],
         validatedLayouts: [ValidatedMosaicLayout],
-        startupLayout: String
+        startupLayout: String,
+        layoutFlashEnabled: Bool = true,
+        layoutFlashDuration: Double = 1.4
     ) {
         self.version = version
         self.panes = panes
         self.layouts = layouts
         self.validatedLayouts = validatedLayouts
         self.startupLayout = startupLayout
+        self.layoutFlashEnabled = layoutFlashEnabled
+        self.layoutFlashDuration = layoutFlashDuration
     }
 
     public static let builtIn = WorkspaceConfig(
@@ -59,7 +65,9 @@ public struct WorkspaceConfig: Equatable, Sendable {
                 ]
             )
         ],
-        startupLayout: "default"
+        startupLayout: "default",
+        layoutFlashEnabled: true,
+        layoutFlashDuration: 1.4
     )
 
     public var startupMosaicLayout: ValidatedMosaicLayout? {
@@ -332,7 +340,9 @@ public final class WorkspaceConfigLoader {
             panes: panes,
             layouts: config.layouts,
             validatedLayouts: config.validatedLayouts,
-            startupLayout: config.startupLayout
+            startupLayout: config.startupLayout,
+            layoutFlashEnabled: config.layoutFlashEnabled,
+            layoutFlashDuration: config.layoutFlashDuration
         )
     }
 
@@ -444,7 +454,7 @@ struct WorkspaceConfigTOMLParser {
 
             switch table {
             case .root:
-                try insert(key: String(key), value: String(value), into: &root, line: lineNumber, table: "root", allowedKeys: ["version", "startup_layout"])
+                try insert(key: String(key), value: String(value), into: &root, line: lineNumber, table: "root", allowedKeys: ["version", "startup_layout", "layout_flash_enabled", "layout_flash_duration"])
             case .pane(let index):
                 try insert(key: String(key), value: String(value), into: &paneTables[index], line: lineNumber, table: "panes[\(index)]", allowedKeys: ["id", "kind", "url", "profile", "command", "procfile", "process"])
             case .layout(let index):
@@ -462,9 +472,22 @@ struct WorkspaceConfigTOMLParser {
             try parseLayout(fields, index: index)
         }
         let startupLayout = try requiredString(root["startup_layout"], table: "root", field: "startup_layout")
+        let layoutFlashEnabled = try parseBool(root["layout_flash_enabled"], field: "layout_flash_enabled") ?? true
+        let layoutFlashDuration = try parseDouble(root["layout_flash_duration"], field: "layout_flash_duration") ?? 1.4
+        guard layoutFlashDuration >= 0 else {
+            throw WorkspaceConfigParseError.invalidValue(field: "layout_flash_duration", value: String(layoutFlashDuration))
+        }
 
         let validatedLayouts = try validate(panes: panes, layouts: layouts, startupLayout: startupLayout)
-        return WorkspaceConfig(version: version, panes: panes, layouts: layouts, validatedLayouts: validatedLayouts, startupLayout: startupLayout)
+        return WorkspaceConfig(
+            version: version,
+            panes: panes,
+            layouts: layouts,
+            validatedLayouts: validatedLayouts,
+            startupLayout: startupLayout,
+            layoutFlashEnabled: layoutFlashEnabled,
+            layoutFlashDuration: layoutFlashDuration
+        )
     }
 
     private func parsePane(_ fields: [String: String], index: Int) throws -> PaneDefinition {
@@ -672,6 +695,23 @@ struct WorkspaceConfigTOMLParser {
         guard let value else { return nil }
         guard let intValue = Int(value) else { throw WorkspaceConfigParseError.invalidValue(field: field, value: value) }
         return intValue
+    }
+
+    private func parseDouble(_ value: String?, field: String) throws -> Double? {
+        guard let value else { return nil }
+        guard let doubleValue = Double(value), doubleValue.isFinite else {
+            throw WorkspaceConfigParseError.invalidValue(field: field, value: value)
+        }
+        return doubleValue
+    }
+
+    private func parseBool(_ value: String?, field: String) throws -> Bool? {
+        guard let value else { return nil }
+        switch value {
+        case "true": return true
+        case "false": return false
+        default: throw WorkspaceConfigParseError.invalidValue(field: field, value: value)
+        }
     }
 
     private func parseString(_ value: String?, field: String) throws -> String? {

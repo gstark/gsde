@@ -56,6 +56,32 @@ struct WorkspaceConfigTests {
         ])
     }
 
+    @Test("layout flash settings can be configured")
+    func layoutFlashSettingsCanBeConfigured() throws {
+        let directory = try temporaryDirectory()
+        let configURL = directory.appendingPathComponent("flash.toml")
+        try """
+        version = 1
+        startup_layout = "work"
+        layout_flash_enabled = false
+        layout_flash_duration = 2.5
+
+        [[panes]]
+        id = "term"
+        kind = "terminal"
+
+        [[layouts]]
+        id = "work"
+        areas = ["term"]
+        """.write(to: configURL, atomically: true, encoding: .utf8)
+
+        let result = WorkspaceConfigLoader(environment: ["GSDE_CONFIG": configURL.path], homeDirectory: directory).load()
+
+        #expect(result.diagnostics.isEmpty)
+        #expect(result.config.layoutFlashEnabled == false)
+        #expect(result.config.layoutFlashDuration == 2.5)
+    }
+
     @Test("discovers project config from GSDE_PROJECT_DIR before home config")
     func discoversProjectConfig() throws {
         let home = try temporaryDirectory()
