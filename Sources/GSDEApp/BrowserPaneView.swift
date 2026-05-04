@@ -18,6 +18,8 @@ struct BrowserProfileConfig {
 }
 
 final class BrowserPaneView: NSView, WKNavigationDelegate {
+    static weak var activePane: BrowserPaneView?
+
     private let profile: BrowserProfileConfig
     private let toolbar = NSStackView()
     private let backButton = NSButton(title: "‹", target: nil, action: nil)
@@ -98,6 +100,9 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
 
         installKeyCommandMonitorIfNeeded()
         createCEFBrowserIfPossible()
+        if Self.activePane == nil {
+            Self.activePane = self
+        }
         if window?.firstResponder == nil {
             window?.makeFirstResponder(cefBrowser == nil ? webView : browserContainer)
         }
@@ -109,6 +114,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     }
 
     override func becomeFirstResponder() -> Bool {
+        Self.activePane = self
         if let cefBrowser {
             gsde_chromium_browser_focus(cefBrowser, 1)
             return true
@@ -124,6 +130,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     }
 
     override func mouseDown(with event: NSEvent) {
+        Self.activePane = self
         window?.makeFirstResponder(self)
         if let cefBrowser {
             gsde_chromium_browser_focus(cefBrowser, 1)
@@ -335,17 +342,35 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     }
 
     @objc private func navigateFromURLField() {
+        Self.activePane = self
         guard let url = normalizedURL(from: urlField.stringValue) else { return }
         load(url)
         window?.makeFirstResponder(self)
     }
 
+    @objc func browserFocusLocation() { focusURLField() }
+    @objc func browserOpenFind() { openFind() }
+    @objc func browserFindNext() { findNext() }
+    @objc func browserFindPrevious() { findPrevious() }
+    @objc func browserGoBack() { goBack() }
+    @objc func browserGoForward() { goForward() }
+    @objc func browserReload() { reload() }
+    @objc func browserReloadIgnoringCache() { performReload(ignoringCache: true) }
+    @objc func browserStopLoading() { stopLoading() }
+    @objc func browserShowDeveloperTools() { showDeveloperTools() }
+    @objc func browserPrint() { printPage() }
+    @objc func browserZoomIn() { zoomIn() }
+    @objc func browserZoomOut() { zoomOut() }
+    @objc func browserZoomReset() { zoomReset() }
+
     @objc private func focusURLField() {
+        Self.activePane = self
         window?.makeFirstResponder(urlField)
         urlField.currentEditor()?.selectAll(nil)
     }
 
     @objc private func openFind() {
+        Self.activePane = self
         setFindVisible(true)
         window?.makeFirstResponder(findField)
         findField.currentEditor()?.selectAll(nil)

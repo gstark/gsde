@@ -375,8 +375,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         appMenuItem.submenu = appMenu
 
+        let browserMenuItem = NSMenuItem()
+        browserMenuItem.title = "Browser"
+        mainMenu.addItem(browserMenuItem)
+        let browserMenu = NSMenu(title: "Browser")
+        browserMenuItem.submenu = browserMenu
+
+        addMenuItem("Focus Location", #selector(browserFocusLocation(_:)), "l", to: browserMenu)
+        addMenuItem("Find", #selector(browserOpenFind(_:)), "f", to: browserMenu)
+        addMenuItem("Find Next", #selector(browserFindNext(_:)), "g", to: browserMenu)
+        addMenuItem("Find Previous", #selector(browserFindPrevious(_:)), "G", to: browserMenu)
+        browserMenu.addItem(.separator())
+        addMenuItem("Back", #selector(browserGoBack(_:)), "[", to: browserMenu)
+        addMenuItem("Forward", #selector(browserGoForward(_:)), "]", to: browserMenu)
+        addMenuItem("Reload", #selector(browserReload(_:)), "r", to: browserMenu)
+        addMenuItem("Reload Ignoring Cache", #selector(browserReloadIgnoringCache(_:)), "R", to: browserMenu)
+        addMenuItem("Stop Loading", #selector(browserStopLoading(_:)), ".", to: browserMenu)
+        browserMenu.addItem(.separator())
+        addMenuItem("Zoom In", #selector(browserZoomIn(_:)), "+", to: browserMenu)
+        addMenuItem("Zoom Out", #selector(browserZoomOut(_:)), "-", to: browserMenu)
+        addMenuItem("Actual Size", #selector(browserZoomReset(_:)), "0", to: browserMenu)
+        browserMenu.addItem(.separator())
+        addMenuItem("Print", #selector(browserPrint(_:)), "p", to: browserMenu)
+        addMenuItem("Developer Tools", #selector(browserShowDeveloperTools(_:)), "i", modifiers: [.command, .option], to: browserMenu)
+
         NSApp.mainMenu = mainMenu
     }
+
+    private func addMenuItem(
+        _ title: String,
+        _ action: Selector,
+        _ keyEquivalent: String,
+        modifiers: NSEvent.ModifierFlags = [.command],
+        to menu: NSMenu
+    ) {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
+        item.target = self
+        item.keyEquivalentModifierMask = modifiers
+        menu.addItem(item)
+    }
+
+    private var activeBrowserPane: BrowserPaneView? {
+        BrowserPaneView.activePane
+    }
+
+    @objc private func browserFocusLocation(_ sender: Any?) { activeBrowserPane?.browserFocusLocation() }
+    @objc private func browserOpenFind(_ sender: Any?) { activeBrowserPane?.browserOpenFind() }
+    @objc private func browserFindNext(_ sender: Any?) { activeBrowserPane?.browserFindNext() }
+    @objc private func browserFindPrevious(_ sender: Any?) { activeBrowserPane?.browserFindPrevious() }
+    @objc private func browserGoBack(_ sender: Any?) { activeBrowserPane?.browserGoBack() }
+    @objc private func browserGoForward(_ sender: Any?) { activeBrowserPane?.browserGoForward() }
+    @objc private func browserReload(_ sender: Any?) { activeBrowserPane?.browserReload() }
+    @objc private func browserReloadIgnoringCache(_ sender: Any?) { activeBrowserPane?.browserReloadIgnoringCache() }
+    @objc private func browserStopLoading(_ sender: Any?) { activeBrowserPane?.browserStopLoading() }
+    @objc private func browserZoomIn(_ sender: Any?) { activeBrowserPane?.browserZoomIn() }
+    @objc private func browserZoomOut(_ sender: Any?) { activeBrowserPane?.browserZoomOut() }
+    @objc private func browserZoomReset(_ sender: Any?) { activeBrowserPane?.browserZoomReset() }
+    @objc private func browserPrint(_ sender: Any?) { activeBrowserPane?.browserPrint() }
+    @objc private func browserShowDeveloperTools(_ sender: Any?) { activeBrowserPane?.browserShowDeveloperTools() }
 }
 
 let app = NSApplication.shared
