@@ -315,7 +315,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
         autoresizesSubviews = true
         autosaveName = splitAutosaveName
 
-        initialPanes.forEach { addPane($0) }
+        initialPanes.forEach { addPane($0, after: nil) }
     }
 
     override func layout() {
@@ -327,7 +327,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
     }
 
     func addTerminalPane() {
-        addPane(GhosttyHostView())
+        addPane(GhosttyHostView(), after: activeArrangedPane)
         persistPaneLayout()
         distributePanesEvenly()
     }
@@ -342,7 +342,10 @@ final class ThreePaneWorkspaceView: NSSplitView {
             ).first?.appendingPathComponent("GSDE/Chromium/Profiles/\(stateIdentifier)", isDirectory: true),
             persistent: true
         )
-        addPane(BrowserPaneView(profile: profile, stateIdentifier: stateIdentifier, initialURL: URL(string: "https://example.com")!))
+        addPane(
+            BrowserPaneView(profile: profile, stateIdentifier: stateIdentifier, initialURL: URL(string: "https://example.com")!),
+            after: activeArrangedPane
+        )
         persistPaneLayout()
         distributePanesEvenly()
     }
@@ -361,9 +364,14 @@ final class ThreePaneWorkspaceView: NSSplitView {
         distributePanesEvenly()
     }
 
-    private func addPane(_ pane: NSView) {
-        addArrangedSubview(pane)
-        setHoldingPriority(.defaultLow, forSubviewAt: arrangedSubviews.count - 1)
+    private func addPane(_ pane: NSView, after existingPane: NSView?) {
+        if let existingPane, let existingIndex = arrangedSubviews.firstIndex(of: existingPane) {
+            insertArrangedSubview(pane, at: existingIndex + 1)
+            setHoldingPriority(.defaultLow, forSubviewAt: existingIndex + 1)
+        } else {
+            addArrangedSubview(pane)
+            setHoldingPriority(.defaultLow, forSubviewAt: arrangedSubviews.count - 1)
+        }
         autosaveName = splitAutosaveName
     }
 
