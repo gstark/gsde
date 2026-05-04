@@ -17,7 +17,7 @@ ARCHIVE_PATH="${CACHE_DIR}/${TARBALL}"
 EXTRACT_DIR="${CACHE_DIR}/code-server-${VERSION}-macos-${ARCH}"
 
 if [[ -x "${DEST_DIR}/bin/code-server" ]]; then
-  INSTALLED_VERSION="$("${DEST_DIR}/bin/code-server" --version 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)"
+  INSTALLED_VERSION="$("${DEST_DIR}/bin/code-server" --version 2>/dev/null | grep -Eo '^[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)"
   if [[ "${INSTALLED_VERSION}" == "${VERSION}" ]]; then
     echo "code-server ${VERSION} already available at ${DEST_DIR}/bin/code-server"
     exit 0
