@@ -28,6 +28,7 @@ static inline void atomic_init(atomic_int *value, int desired) { value->store(de
 #include "include/capi/cef_load_handler_capi.h"
 #include "include/capi/cef_request_handler_capi.h"
 #include "include/capi/cef_request_context_capi.h"
+#include "include/capi/cef_cookie_capi.h"
 #include "include/internal/cef_string.h"
 #else
 #define GSDE_HAVE_CEF_HEADERS 0
@@ -40,6 +41,7 @@ static char status[512] = "CEF has not been initialized";
 static char last_error[512] = "No CEF errors recorded";
 static atomic_int next_browser_id{1};
 static atomic_int live_browser_count{0};
+static char global_cache_path[4096] = {0};
 
 #if GSDE_HAVE_CEF_HEADERS
 typedef int (*cef_execute_process_fn)(const cef_main_args_t *, cef_app_t *, void *);
@@ -190,7 +192,9 @@ int gsde_chromium_initialize(const char *root_cache_path, const char *cache_path
         cef_string_utf8_to_utf16_ptr(root_cache_path, strlen(root_cache_path), &settings.root_cache_path);
     }
     if (cache_path && cache_path[0] != '\0') {
+        snprintf(global_cache_path, sizeof(global_cache_path), "%s", cache_path);
         cef_string_utf8_to_utf16_ptr(cache_path, strlen(cache_path), &settings.cache_path);
+        settings.persist_session_cookies = 1;
     }
     if (browser_subprocess_path && browser_subprocess_path[0] != '\0') {
         cef_string_utf8_to_utf16_ptr(browser_subprocess_path, strlen(browser_subprocess_path), &settings.browser_subprocess_path);
@@ -1164,12 +1168,7 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     configure_browser_handlers(browser);
 
     if (cache_path && cache_path[0] != '\0') {
-        cef_request_context_settings_t context_settings;
-        memset(&context_settings, 0, sizeof(context_settings));
-        context_settings.size = sizeof(context_settings);
-        ScopedCefString context_cache_path(cache_path);
-        context_settings.cache_path = *context_cache_path.get();
-        browser->request_context = cef_request_context_create_context_ptr(&context_settings, NULL);
+        gsde_log("per-browser CEF cache paths are disabled; using global request context");
     }
 
     cef_window_info_t window_info;
@@ -1229,7 +1228,7 @@ void gsde_chromium_browser_destroy(gsde_chromium_browser_t *browser) {
     if (browser->browser) {
         cef_browser_host_t *host = browser->browser->get_host ? browser->browser->get_host(browser->browser) : NULL;
         if (host && host->close_browser) {
-            host->close_browser(host, 1);
+            host->close_browser(host, 0);
             return;
         }
     }

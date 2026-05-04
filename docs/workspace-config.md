@@ -96,7 +96,7 @@ web: npm run dev
 
 `command` cannot be combined with `procfile`/`process`, and `procfile`/`process` must be provided together.
 
-Browser profiles are persisted under `~/Library/Application Support/GSDE/Chromium/Profiles`. When `profile` is omitted, GSDE uses the pane `id` as the stable profile name. Set `profile` when several layouts should share browser state under a shorter or more explicit name.
+Browser storage is persisted beside the resolved config file using CEF's global browser profile. For project configs, all browser panes share `.config/gsde/chromium/Default` in the project directory. For an explicit `GSDE_CONFIG=/path/to/config.toml`, the shared profile is `/path/to/chromium/Default`. GSDE creates the needed directories automatically. Built-in fallback launches use `~/Library/Application Support/GSDE/Chromium`. The `profile` field is currently accepted for config compatibility, but configured browser panes intentionally share one project profile.
 
 Pane IDs must be unique. They are also the tokens used in layout areas, so choose IDs without whitespace.
 

@@ -478,22 +478,10 @@ final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
 @MainActor
 final class ConfiguredPaneRegistry {
     private let definitionsByID: [String: PaneDefinition]
-    private let appSupportDirectory: URL
     private var viewsByPaneID: [String: NSView] = [:]
 
-    init(
-        config: WorkspaceConfig,
-        appSupportDirectory: URL = ConfiguredPaneRegistry.applicationSupportDirectory()
-    ) {
+    init(config: WorkspaceConfig) {
         self.definitionsByID = Dictionary(uniqueKeysWithValues: config.panes.map { ($0.id, $0) })
-        self.appSupportDirectory = appSupportDirectory
-    }
-
-    private static func applicationSupportDirectory() -> URL {
-        guard let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            preconditionFailure("Could not resolve the user Application Support directory for configured pane profiles")
-        }
-        return url
     }
 
     func view(for paneID: String) -> NSView {
@@ -514,20 +502,6 @@ final class ConfiguredPaneRegistry {
         definitionsByID.keys.sorted().map { view(for: $0) }
     }
 
-    private static func profileDirectoryName(for profileName: String) -> String {
-        var allowedCharacters = CharacterSet.alphanumerics
-        allowedCharacters.insert(charactersIn: "._-")
-        guard let directoryName = profileName.addingPercentEncoding(withAllowedCharacters: allowedCharacters),
-              !directoryName.isEmpty
-        else {
-            preconditionFailure("Could not derive a safe configured browser profile directory name")
-        }
-        if directoryName == "." || directoryName == ".." {
-            return directoryName.replacingOccurrences(of: ".", with: "%2E")
-        }
-        return directoryName
-    }
-
     private func makeView(for definition: PaneDefinition) -> NSView {
         switch definition.kind {
         case .terminal:
@@ -536,15 +510,10 @@ final class ConfiguredPaneRegistry {
             guard let url = definition.url else {
                 preconditionFailure("Validated browser pane \(definition.id) is missing its URL")
             }
-            let profileName = definition.profile ?? definition.id
             let profile = BrowserProfileConfig(
-                name: profileName,
-                storageDirectory: appSupportDirectory
-                    .appendingPathComponent("GSDE", isDirectory: true)
-                    .appendingPathComponent("Chromium", isDirectory: true)
-                    .appendingPathComponent("Profiles", isDirectory: true)
-                    .appendingPathComponent(Self.profileDirectoryName(for: profileName), isDirectory: true),
-                persistent: true
+                name: "default",
+                storageDirectory: nil,
+                persistent: false
             )
             return BrowserPaneView(profile: profile, stateIdentifier: definition.id, initialURL: url)
         }
@@ -1092,10 +1061,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSApp.presentationOptions = [.hideDock, .hideMenuBar]
         installMainMenu()
         installLayoutSwitcherShortcutMonitor()
-        initializeChromiumIfAvailable()
+
+        let loadedConfig = WorkspaceConfigLoader().load()
+        initializeChromiumIfAvailable(rootCachePath: Self.chromiumRootDirectory(for: loadedConfig.source))
 
         let frame = Self.frameCoveringAllDisplays()
-        let contentView = Self.makeWorkspaceView(frame: NSRect(origin: .zero, size: frame.size))
+        let contentView = Self.makeWorkspaceView(frame: NSRect(origin: .zero, size: frame.size), loadedConfig: loadedConfig)
 
         let window = BorderlessMainWindow(
             contentRect: frame,
@@ -1139,9 +1110,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         window?.contentView = nil
         chromiumMessageLoopTimer?.invalidate()
         chromiumMessageLoopTimer = nil
-        for _ in 0..<200 {
+        for _ in 0..<500 {
             gsde_chromium_do_message_loop_work()
             if gsde_chromium_live_browser_count() == 0 { break }
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
+        for _ in 0..<100 {
+            gsde_chromium_do_message_loop_work()
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
         }
     }
@@ -1191,19 +1166,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
 
 
-    private func initializeChromiumIfAvailable() {
+    private func initializeChromiumIfAvailable(rootCachePath: URL) {
         guard gsde_chromium_cef_available() != 0 else { return }
 
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-
-        let rootCachePath = appSupport.appendingPathComponent("GSDE/Chromium", isDirectory: true)
-        try? FileManager.default.createDirectory(at: rootCachePath, withIntermediateDirectories: true)
+        let globalCachePath = rootCachePath.appendingPathComponent("global", isDirectory: true)
+        try? FileManager.default.createDirectory(at: globalCachePath, withIntermediateDirectories: true)
 
         let initialized = rootCachePath.path.withCString { rootCache in
-            rootCachePath.path.withCString { profileCache in
+            globalCachePath.path.withCString { profileCache in
                 "".withCString { helper in
                     gsde_chromium_initialize(rootCache, profileCache, helper)
                 }
@@ -1221,6 +1191,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     static func makeWorkspaceView(frame: NSRect) -> NSView {
+        makeWorkspaceView(frame: frame, loadedConfig: WorkspaceConfigLoader().load())
+    }
+
+    private static func makeWorkspaceView(frame: NSRect, loadedConfig: WorkspaceConfigLoadResult) -> NSView {
         let hasLegacyPaneEnvironment = ProcessInfo.processInfo.environment["GSDE_BROWSER_PANES"] != nil
             || ProcessInfo.processInfo.environment["GSDE_BROWSER_URLS"] != nil
         guard !hasLegacyPaneEnvironment else {
@@ -1228,7 +1202,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return ThreePaneWorkspaceView(frame: frame)
         }
 
-        let loadedConfig = WorkspaceConfigLoader().load()
         for diagnostic in loadedConfig.diagnostics {
             logConfig("\(diagnostic)")
         }
@@ -1256,6 +1229,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             paneRegistry: registry,
             activeLayoutID: startupLayout.id
         )
+    }
+
+    private static func chromiumRootDirectory(for source: WorkspaceConfigSource) -> URL {
+        if let configURL = source.url {
+            return configURL
+                .deletingLastPathComponent()
+                .appendingPathComponent("chromium", isDirectory: true)
+        }
+
+        guard let appSupportDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+                .appendingPathComponent("GSDE", isDirectory: true)
+                .appendingPathComponent("Chromium", isDirectory: true)
+        }
+        return appSupportDirectory
+            .appendingPathComponent("GSDE", isDirectory: true)
+            .appendingPathComponent("Chromium", isDirectory: true)
     }
 
     private static func logConfig(_ message: String) {
