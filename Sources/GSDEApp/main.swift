@@ -273,6 +273,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
     private var chromiumMessageLoopTimer: Timer?
+    private let frameAutosaveName = "GSDE.MainWindow"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -292,7 +293,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.contentView = contentView
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        window.setFrame(frame, display: true)
+        window.setFrameAutosaveName(frameAutosaveName)
+        if !window.setFrameUsingName(frameAutosaveName) {
+            window.setFrame(frame, display: true)
+        }
         window.makeKeyAndOrderFront(nil)
 
         self.window = window
