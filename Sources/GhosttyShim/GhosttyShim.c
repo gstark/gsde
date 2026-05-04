@@ -41,14 +41,62 @@ struct gsde_ghostty_host {
     ghostty_app_t app;
     ghostty_config_t config;
     ghostty_surface_t surface;
+    char title[1024];
+    ghostty_action_mouse_shape_e mouse_shape;
+    ghostty_action_mouse_visibility_e mouse_visibility;
+    struct gsde_ghostty_host *next;
 };
+
+static gsde_ghostty_host_t *hosts = NULL;
 
 static struct ghostty_api api;
 static char status[512] = "libghostty has not been loaded";
 static bool attempted_load = false;
 
+static gsde_ghostty_host_t *host_from_app(ghostty_app_t app) {
+    for (gsde_ghostty_host_t *host = hosts; host; host = host->next) {
+        if (host->app == app) return host;
+    }
+    return NULL;
+}
+
+static void register_host(gsde_ghostty_host_t *host) {
+    host->next = hosts;
+    hosts = host;
+}
+
+static void unregister_host(gsde_ghostty_host_t *host) {
+    gsde_ghostty_host_t **cursor = &hosts;
+    while (*cursor) {
+        if (*cursor == host) {
+            *cursor = host->next;
+            host->next = NULL;
+            return;
+        }
+        cursor = &(*cursor)->next;
+    }
+}
+
 static void wakeup_cb(void *userdata) { (void)userdata; }
-static bool action_cb(ghostty_app_t app, ghostty_target_s target, ghostty_action_s action) { (void)app; (void)target; (void)action; return false; }
+static bool action_cb(ghostty_app_t app, ghostty_target_s target, ghostty_action_s action) {
+    (void)target;
+    gsde_ghostty_host_t *host = host_from_app(app);
+    if (!host) return false;
+
+    switch (action.tag) {
+        case GHOSTTY_ACTION_SET_TITLE:
+            snprintf(host->title, sizeof(host->title), "%s", action.action.set_title.title ? action.action.set_title.title : "");
+            return true;
+        case GHOSTTY_ACTION_MOUSE_SHAPE:
+            host->mouse_shape = action.action.mouse_shape;
+            return true;
+        case GHOSTTY_ACTION_MOUSE_VISIBILITY:
+            host->mouse_visibility = action.action.mouse_visibility;
+            return true;
+        default:
+            return false;
+    }
+}
 static bool read_clipboard_cb(void *userdata, ghostty_clipboard_e clipboard, void *request) { (void)userdata; (void)clipboard; (void)request; return false; }
 static void confirm_read_clipboard_cb(void *userdata, const char *title, void *request, ghostty_clipboard_request_e type) { (void)userdata; (void)title; (void)request; (void)type; }
 static void write_clipboard_cb(void *userdata, ghostty_clipboard_e clipboard, const ghostty_clipboard_content_s *contents, size_t count, bool confirm) { (void)userdata; (void)clipboard; (void)contents; (void)count; (void)confirm; }
@@ -134,11 +182,27 @@ const char *gsde_ghostty_status(void) {
     return status;
 }
 
+const char *gsde_ghostty_host_title(gsde_ghostty_host_t *host) {
+    return host ? host->title : "";
+}
+
+ghostty_action_mouse_shape_e gsde_ghostty_host_mouse_shape(gsde_ghostty_host_t *host) {
+    return host ? host->mouse_shape : GHOSTTY_MOUSE_SHAPE_DEFAULT;
+}
+
+ghostty_action_mouse_visibility_e gsde_ghostty_host_mouse_visibility(gsde_ghostty_host_t *host) {
+    return host ? host->mouse_visibility : GHOSTTY_MOUSE_VISIBLE;
+}
+
 gsde_ghostty_host_t *gsde_ghostty_host_create(void *nsview, double scale_factor, uint32_t width_px, uint32_t height_px) {
     if (!ensure_loaded()) return NULL;
 
     gsde_ghostty_host_t *host = calloc(1, sizeof(gsde_ghostty_host_t));
     if (!host) return NULL;
+
+    snprintf(host->title, sizeof(host->title), "Terminal");
+    host->mouse_shape = GHOSTTY_MOUSE_SHAPE_TEXT;
+    host->mouse_visibility = GHOSTTY_MOUSE_VISIBLE;
 
     host->config = api.config_new();
     if (!host->config) {
@@ -182,6 +246,7 @@ gsde_ghostty_host_t *gsde_ghostty_host_create(void *nsview, double scale_factor,
         return NULL;
     }
 
+    register_host(host);
     gsde_ghostty_host_resize(host, scale_factor, width_px, height_px);
     gsde_ghostty_host_focus(host, true);
     snprintf(status, sizeof(status), "libghostty surface created");
@@ -190,6 +255,7 @@ gsde_ghostty_host_t *gsde_ghostty_host_create(void *nsview, double scale_factor,
 
 void gsde_ghostty_host_destroy(gsde_ghostty_host_t *host) {
     if (!host) return;
+    unregister_host(host);
     if (api.surface_free && host->surface) api.surface_free(host->surface);
     if (api.app_free && host->app) api.app_free(host->app);
     if (api.config_free && host->config) api.config_free(host->config);

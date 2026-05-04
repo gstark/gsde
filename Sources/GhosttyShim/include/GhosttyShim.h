@@ -13,6 +13,9 @@ extern "C" {
 typedef struct gsde_ghostty_host gsde_ghostty_host_t;
 
 const char *gsde_ghostty_status(void);
+const char *gsde_ghostty_host_title(gsde_ghostty_host_t *host);
+ghostty_action_mouse_shape_e gsde_ghostty_host_mouse_shape(gsde_ghostty_host_t *host);
+ghostty_action_mouse_visibility_e gsde_ghostty_host_mouse_visibility(gsde_ghostty_host_t *host);
 gsde_ghostty_host_t *gsde_ghostty_host_create(void *nsview, double scale_factor, uint32_t width_px, uint32_t height_px);
 void gsde_ghostty_host_destroy(gsde_ghostty_host_t *host);
 void gsde_ghostty_host_resize(gsde_ghostty_host_t *host, double scale_factor, uint32_t width_px, uint32_t height_px);

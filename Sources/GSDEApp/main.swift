@@ -302,7 +302,15 @@ final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
     private func markActivePane() {
         Self.activePane = self
         BrowserPaneView.activePane = nil
+        updateWindowTitleIfActive()
         NotificationCenter.default.post(name: .gsdeActivePaneDidChange, object: self)
+    }
+
+    private func updateWindowTitleIfActive() {
+        guard Self.activePane === self else { return }
+        let title = host.map { String(cString: gsde_ghostty_host_title($0)) } ?? "Terminal"
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        window?.title = cleanTitle.isEmpty ? "GSDE — Terminal" : "GSDE — \(cleanTitle)"
     }
 
     private func setActiveAppearance(_ active: Bool) {
@@ -340,6 +348,7 @@ final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
         guard let host else { return }
         gsde_ghostty_host_tick(host)
         gsde_ghostty_host_draw(host)
+        updateWindowTitleIfActive()
     }
 
     private func resizeHost() {
