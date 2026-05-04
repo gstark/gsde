@@ -1,12 +1,16 @@
 import Darwin
 import Foundation
 
-public enum VSCodePaneLaunchError: Error, Equatable, CustomStringConvertible {
+public enum VSCodePaneLaunchError: Error, Equatable, CustomStringConvertible, LocalizedError {
     case missingConfigFile
     case emptyPaneID
     case invalidPort(UInt16)
     case emptyPassword
     case invalidBindHost(String)
+    case bundledCodeServerMissing(URL)
+    case bundledCodeServerNotExecutable(URL)
+
+    public var errorDescription: String? { description }
 
     public var description: String {
         switch self {
@@ -20,7 +24,39 @@ public enum VSCodePaneLaunchError: Error, Equatable, CustomStringConvertible {
             return "code-server password must not be empty"
         case .invalidBindHost(let host):
             return "code-server bind host must be a non-empty host name or IP address; received \(host.debugDescription)"
+        case .bundledCodeServerMissing(let url):
+            return "Bundled code-server executable is missing at \(url.path)"
+        case .bundledCodeServerNotExecutable(let url):
+            return "Bundled code-server exists but is not executable at \(url.path)"
         }
+    }
+}
+
+public struct CodeServerBundleResolver: Sendable {
+    public static let relativeExecutablePath = "code-server/bin/code-server"
+
+    private let resourcesDirectory: URL
+
+    public init(resourcesDirectory: URL? = Bundle.main.resourceURL) {
+        self.resourcesDirectory = resourcesDirectory ?? URL(fileURLWithPath: ".", isDirectory: true)
+    }
+
+    public init(appBundleURL: URL) {
+        self.resourcesDirectory = appBundleURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Resources", isDirectory: true)
+    }
+
+    public func executableURL(fileManager: FileManager = .default) throws -> URL {
+        let executableURL = resourcesDirectory.appendingPathComponent(Self.relativeExecutablePath, isDirectory: false).standardizedFileURL
+        var isDirectory = ObjCBool(false)
+        guard fileManager.fileExists(atPath: executableURL.path, isDirectory: &isDirectory), !isDirectory.boolValue else {
+            throw VSCodePaneLaunchError.bundledCodeServerMissing(executableURL)
+        }
+        guard fileManager.isExecutableFile(atPath: executableURL.path) else {
+            throw VSCodePaneLaunchError.bundledCodeServerNotExecutable(executableURL)
+        }
+        return executableURL
     }
 }
 
@@ -143,6 +179,22 @@ public struct CodeServerLaunchBuilder: Sendable {
     public init(bindHost: String = "127.0.0.1", stateResolver: VSCodePaneStateResolver = VSCodePaneStateResolver()) {
         self.bindHost = bindHost
         self.stateResolver = stateResolver
+    }
+
+    public func bundledConfiguration(
+        paneID: String,
+        configSource: WorkspaceConfigSource,
+        port: UInt16,
+        password: String,
+        bundleResolver: CodeServerBundleResolver = CodeServerBundleResolver()
+    ) throws -> CodeServerLaunchConfiguration {
+        try configuration(
+            executableURL: bundleResolver.executableURL(),
+            paneID: paneID,
+            configSource: configSource,
+            port: port,
+            password: password
+        )
     }
 
     public func configuration(

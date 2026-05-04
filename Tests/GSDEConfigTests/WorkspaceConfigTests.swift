@@ -188,6 +188,49 @@ struct WorkspaceConfigTests {
         ])
     }
 
+    @Test("bundled code-server resolver requires an executable in app resources")
+    func bundledCodeServerResolverRequiresExecutableInAppResources() throws {
+        let appBundle = try temporaryDirectory().appendingPathComponent("GSDE.app", isDirectory: true)
+        let resources = appBundle.appendingPathComponent("Contents/Resources", isDirectory: true)
+        let executableURL = resources.appendingPathComponent("code-server/bin/code-server", isDirectory: false)
+        let resolver = CodeServerBundleResolver(appBundleURL: appBundle)
+
+        #expect(throws: VSCodePaneLaunchError.bundledCodeServerMissing(executableURL.standardizedFileURL)) {
+            try resolver.executableURL()
+        }
+
+        try FileManager.default.createDirectory(at: executableURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "#!/usr/bin/env bash\necho code-server\n".write(to: executableURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: executableURL.path)
+        #expect(throws: VSCodePaneLaunchError.bundledCodeServerNotExecutable(executableURL.standardizedFileURL)) {
+            try resolver.executableURL()
+        }
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+        #expect(try resolver.executableURL() == executableURL.standardizedFileURL)
+    }
+
+    @Test("bundled code-server launch resolves executable from app resources")
+    func bundledCodeServerLaunchResolvesExecutableFromAppResources() throws {
+        let project = try temporaryDirectory()
+        let appBundle = try temporaryDirectory().appendingPathComponent("GSDE.app", isDirectory: true)
+        let executableURL = appBundle.appendingPathComponent("Contents/Resources/code-server/bin/code-server", isDirectory: false)
+        try FileManager.default.createDirectory(at: executableURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "#!/usr/bin/env bash\necho code-server\n".write(to: executableURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+
+        let launch = try CodeServerLaunchBuilder(stateResolver: VSCodePaneStateResolver(environment: ["GSDE_PROJECT_DIR": project.path]))
+            .bundledConfiguration(
+                paneID: "editor",
+                configSource: .projectDefault(project.appendingPathComponent(".config/gsde/config.toml")),
+                port: 49152,
+                password: "secret",
+                bundleResolver: CodeServerBundleResolver(appBundleURL: appBundle)
+            )
+
+        #expect(launch.executableURL == executableURL.standardizedFileURL)
+    }
+
     @Test("code-server launch validation rejects missing inputs")
     func codeServerLaunchValidationRejectsMissingInputs() throws {
         let executableURL = URL(fileURLWithPath: "/bin/code-server")

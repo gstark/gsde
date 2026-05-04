@@ -534,12 +534,14 @@ final class PaneBoxView: NSView {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            guard let self else { return }
             let activeView = notification.object as? NSView
-            let isActive = activeView === self.contentView || activeView?.isDescendant(of: self.contentView) == true
-            if self.active != isActive {
-                self.active = isActive
-                self.needsDisplay = true
+            Task { @MainActor in
+                guard let self else { return }
+                let isActive = activeView === self.contentView || activeView?.isDescendant(of: self.contentView) == true
+                if self.active != isActive {
+                    self.active = isActive
+                    self.needsDisplay = true
+                }
             }
         }
     }
@@ -576,6 +578,43 @@ final class PaneBoxView: NSView {
             rect = NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: thickness)
         }
         rect.fill()
+    }
+}
+
+@MainActor
+final class PaneRuntimeErrorView: NSView {
+    init(title: String, detail: String) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+        layer?.cornerRadius = 6
+
+        let titleLabel = NSTextField(labelWithString: title)
+        titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
+        titleLabel.textColor = .labelColor
+        titleLabel.alignment = .center
+
+        let detailLabel = NSTextField(wrappingLabelWithString: detail)
+        detailLabel.font = .systemFont(ofSize: 13)
+        detailLabel.textColor = .secondaryLabelColor
+        detailLabel.alignment = .center
+
+        let stack = NSStackView(views: [titleLabel, detailLabel])
+        stack.orientation = .vertical
+        stack.spacing = 8
+        stack.alignment = .centerX
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            stack.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, multiplier: 0.82)
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        preconditionFailure("PaneRuntimeErrorView requires a title and detail")
     }
 }
 
@@ -622,7 +661,7 @@ final class ConfiguredPaneRegistry {
             )
             contentView = BrowserPaneView(profile: profile, stateIdentifier: definition.id, initialURL: url)
         case .vscode:
-            contentView = NSView()
+            contentView = makeVSCodePaneView()
         }
 
         guard !definition.border.isZero || !definition.padding.isZero else { return contentView }
@@ -632,6 +671,18 @@ final class ConfiguredPaneRegistry {
             browserView.drawsActiveAppearance = false
         }
         return PaneBoxView(contentView: contentView, border: definition.border, padding: definition.padding)
+    }
+
+    private func makeVSCodePaneView() -> NSView {
+        do {
+            _ = try CodeServerBundleResolver().executableURL()
+            return NSView()
+        } catch {
+            return PaneRuntimeErrorView(
+                title: "VS Code pane unavailable",
+                detail: error.localizedDescription
+            )
+        }
     }
 }
 

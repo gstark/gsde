@@ -3,6 +3,7 @@ build/
 dist/
 external/ghostty/
 external/cef/
+external/code-server/
 .DS_Store
 .flux
 

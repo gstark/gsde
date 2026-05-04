@@ -14,8 +14,9 @@ BINARY := .build/$(CONFIG)/$(SWIFT_PRODUCT)
 CHROMIUM_HELPER_BINARY := .build/$(CONFIG)/$(CHROMIUM_HELPER_PRODUCT)
 BUILT_LIBGHOSTTY := build/libghostty/libghostty.dylib
 CEF_FRAMEWORK := external/cef/Release/Chromium Embedded Framework.framework
+CODE_SERVER_DIR := external/code-server
 
-.PHONY: build libghostty cef app app-with-ghostty app-with-chromium run run-cef run-cef-two-browsers run-cef-four-browsers run-foreground run-cef-foreground smoke-default smoke-cef smoke-cef-custom-urls smoke-cef-four smoke-cef-graceful smoke-cef-repeat smoke-configured verify-cef-bundle verify-cef verify release release-adhoc release-signed release-notarized sign-release notarize-release reset-state clean
+.PHONY: build libghostty cef code-server app app-with-ghostty app-with-chromium run run-cef run-cef-two-browsers run-cef-four-browsers run-foreground run-cef-foreground smoke-default smoke-cef smoke-cef-custom-urls smoke-cef-four smoke-cef-graceful smoke-cef-repeat smoke-configured verify-code-server-bundle verify-cef-bundle verify-cef verify release release-adhoc release-signed release-notarized sign-release notarize-release reset-state clean
 
 build:
 	swift build -c $(CONFIG)
@@ -26,7 +27,10 @@ libghostty:
 cef:
 	./scripts/fetch-cef.sh
 
-app: build
+code-server:
+	./scripts/fetch-code-server.sh
+
+app: build code-server
 	rm -rf $(BUNDLE_DIR)
 	mkdir -p $(MACOS_DIR) $(FRAMEWORKS_DIR) $(CONTENTS_DIR)/Resources/bin
 	cp $(BINARY) $(MACOS_DIR)/$(APP_NAME)
@@ -36,6 +40,7 @@ app: build
 	/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(APP_BUILD)" $(CONTENTS_DIR)/Info.plist
 	if [ -n "$$LIBGHOSTTY_PATH" ]; then cp "$$LIBGHOSTTY_PATH" $(FRAMEWORKS_DIR)/libghostty.dylib; elif [ -f "$(BUILT_LIBGHOSTTY)" ]; then cp "$(BUILT_LIBGHOSTTY)" $(FRAMEWORKS_DIR)/libghostty.dylib; fi
 	if [ -d "$(CEF_FRAMEWORK)" ]; then cp -R "$(CEF_FRAMEWORK)" $(FRAMEWORKS_DIR)/; fi
+	ditto "$(CODE_SERVER_DIR)" $(CONTENTS_DIR)/Resources/code-server
 	cp scripts/gsde $(CONTENTS_DIR)/Resources/bin/gsde
 	./scripts/package-cef-helper.sh "$(CHROMIUM_HELPER_BINARY)" "$(FRAMEWORKS_DIR)" "$(APP_NAME)" "personal.gsde"
 	chmod +x $(MACOS_DIR)/$(APP_NAME) $(CONTENTS_DIR)/Resources/bin/gsde
@@ -85,27 +90,30 @@ smoke-cef-repeat: app-with-chromium
 smoke-configured: app-with-chromium
 	./scripts/smoke-test-configured.sh
 
+verify-code-server-bundle: app
+	./scripts/verify-code-server-bundle.sh "$(BUNDLE_DIR)"
+
 verify-cef-bundle: app-with-chromium
 	./scripts/verify-cef-bundle.sh "$(BUNDLE_DIR)"
 
 verify-cef: verify-cef-bundle smoke-cef smoke-cef-custom-urls smoke-cef-four smoke-cef-graceful smoke-cef-repeat smoke-configured
 
-verify: smoke-default verify-cef
+verify: smoke-default verify-code-server-bundle verify-cef
 
-release: app-with-chromium verify-cef-bundle
+release: app-with-chromium verify-cef-bundle verify-code-server-bundle
 	./scripts/package-release.sh "$(BUNDLE_DIR)"
 
-release-adhoc: app-with-chromium verify-cef-bundle
+release-adhoc: app-with-chromium verify-cef-bundle verify-code-server-bundle
 	GSDE_ADHOC_SIGN=1 ./scripts/package-release.sh "$(BUNDLE_DIR)"
 
-release-signed: app-with-chromium verify-cef-bundle
+release-signed: app-with-chromium verify-cef-bundle verify-code-server-bundle
 	./scripts/sign-release.sh "$(BUNDLE_DIR)"
 	./scripts/package-release.sh "$(BUNDLE_DIR)"
 
 release-notarized: release-signed
 	./scripts/notarize-release.sh "$$(cat dist/latest-release.txt)"
 
-sign-release: app-with-chromium verify-cef-bundle
+sign-release: app-with-chromium verify-cef-bundle verify-code-server-bundle
 	./scripts/sign-release.sh "$(BUNDLE_DIR)"
 
 notarize-release:
