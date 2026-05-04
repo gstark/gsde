@@ -27,6 +27,7 @@ struct ghostty_api {
     void (*surface_draw)(ghostty_surface_t);
     void (*surface_text)(ghostty_surface_t, const char *, uintptr_t);
     void (*surface_preedit)(ghostty_surface_t, const char *, uintptr_t);
+    void (*surface_ime_point)(ghostty_surface_t, double *, double *, double *, double *);
     bool (*surface_key)(ghostty_surface_t, ghostty_input_key_s);
     bool (*surface_mouse_button)(ghostty_surface_t, ghostty_input_mouse_state_e, ghostty_input_mouse_button_e, ghostty_input_mods_e);
     void (*surface_mouse_pos)(ghostty_surface_t, double, double, ghostty_input_mods_e);
@@ -108,6 +109,7 @@ static bool ensure_loaded(void) {
     LOAD_SYM(surface_draw, "ghostty_surface_draw");
     LOAD_SYM(surface_text, "ghostty_surface_text");
     LOAD_SYM(surface_preedit, "ghostty_surface_preedit");
+    LOAD_SYM(surface_ime_point, "ghostty_surface_ime_point");
     LOAD_SYM(surface_key, "ghostty_surface_key");
     LOAD_SYM(surface_mouse_button, "ghostty_surface_mouse_button");
     LOAD_SYM(surface_mouse_pos, "ghostty_surface_mouse_pos");
@@ -225,6 +227,11 @@ void gsde_ghostty_host_text(gsde_ghostty_host_t *host, const char *text, uintptr
 void gsde_ghostty_host_preedit(gsde_ghostty_host_t *host, const char *text, uintptr_t len) {
     if (!host || !host->surface) return;
     api.surface_preedit(host->surface, text ? text : "", len);
+}
+
+void gsde_ghostty_host_ime_point(gsde_ghostty_host_t *host, double *x, double *y, double *width, double *height) {
+    if (!host || !host->surface) return;
+    api.surface_ime_point(host->surface, x, y, width, height);
 }
 
 bool gsde_ghostty_host_key(gsde_ghostty_host_t *host, ghostty_input_key_s event) {

@@ -398,9 +398,21 @@ final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
     func characterIndex(for point: NSPoint) -> Int { 0 }
 
     func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
-        let localPoint = NSPoint(x: 0, y: bounds.height)
-        let windowPoint = convert(localPoint, to: nil)
-        return window?.convertToScreen(NSRect(origin: windowPoint, size: .zero)) ?? .zero
+        var x = 0.0
+        var y = 0.0
+        var width = 0.0
+        var height = 0.0
+        gsde_ghostty_host_ime_point(host, &x, &y, &width, &height)
+
+        let scale = backingScaleFactor
+        let localRect = NSRect(
+            x: x / scale,
+            y: bounds.height - (y / scale),
+            width: width / scale,
+            height: max(1, height / scale)
+        )
+        let windowRect = convert(localRect, to: nil)
+        return window?.convertToScreen(windowRect) ?? windowRect
     }
 
     private func plainText(from value: Any) -> String {
