@@ -36,14 +36,15 @@ GSDE Helper (Plugin).app
 GSDE Helper (Renderer).app
 ```
 
-The bridge currently exposes CEF initialization, message loop work, helper process execution, browser creation, native view attachment, navigation, resizing, load diagnostics, and DevTools entry points. The CEF backend is opt-in via `GSDE_ENABLE_CEF=1` or `make run-cef`; default app launch uses the WebKit fallback while CEF integration stabilizes.
+The bridge currently exposes CEF initialization, message loop work, helper process execution, browser creation, native view attachment, navigation, resizing, load/display diagnostics, same-pane popup handling, find, zoom, print, focus, DevTools entry points, and graceful browser close/shutdown tracking. The CEF backend is opt-in via `GSDE_ENABLE_CEF=1` or `make run-cef`; default app launch uses the WebKit fallback while CEF integration stabilizes.
 
-Current verified CEF path:
+Current verified CEF paths:
 
 ```text
-CEF initialized
-CEF browser created with native view
-CEF load end: HTTP 200
+make smoke-cef           # 2 browser panes load HTTP 200
+make smoke-cef-four      # 4 browser panes load HTTP 200
+make smoke-cef-graceful  # browser panes close and CEF shuts down cleanly
+make verify-cef          # all of the above
 ```
 
 ## Desired CEF bridge
@@ -88,9 +89,10 @@ A complete CEF macOS app normally needs more than the framework:
 `BrowserPaneView` currently provides the shell behavior we need:
 
 - URL bar
-- Back/forward/reload
+- Back/forward/reload/stop
+- Find, zoom, print, DevTools, and popup handling
 - Standard context menu behavior
-- Persistent website data
+- Persistent website data via per-pane Chromium profiles
 - Multiple pane instances
 
 The class should keep the same Swift API when the backend changes from WebKit to CEF.

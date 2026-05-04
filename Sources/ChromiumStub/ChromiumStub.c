@@ -224,8 +224,13 @@ void gsde_chromium_shutdown(void) {
         cef_shutdown_ptr();
         initialized = false;
         snprintf(status, sizeof(status), "CEF shut down");
+        gsde_log(status);
     }
 #endif
+}
+
+int gsde_chromium_live_browser_count(void) {
+    return atomic_load(&live_browser_count);
 }
 
 #if GSDE_HAVE_CEF_HEADERS
@@ -245,6 +250,7 @@ struct gsde_chromium_browser {
     int is_loading;
     int http_status;
     double loading_progress;
+    int destroy_requested;
 };
 
 static gsde_chromium_browser_t *browser_from_client(cef_client_t *client) {
@@ -375,9 +381,18 @@ static int CEF_CALLBACK gsde_do_close(cef_life_span_handler_t *self, cef_browser
     return 0;
 }
 
+static void free_chromium_browser(gsde_chromium_browser_t *browser) {
+    if (!browser) return;
+    if (browser->request_context && browser->request_context->base.base.release) {
+        browser->request_context->base.base.release((cef_base_ref_counted_t *)browser->request_context);
+        browser->request_context = NULL;
+    }
+    free(browser);
+}
+
 static void CEF_CALLBACK gsde_on_before_close(cef_life_span_handler_t *self, cef_browser_t *cef_browser) {
     gsde_chromium_browser_t *browser = browser_from_life_span(self);
-    (void)cef_browser;
+    cef_browser_t *closed_browser = browser->browser ? browser->browser : cef_browser;
     browser->browser = NULL;
     int previous = atomic_fetch_sub(&live_browser_count, 1);
     if (previous <= 0) atomic_store(&live_browser_count, 0);
@@ -385,6 +400,9 @@ static void CEF_CALLBACK gsde_on_before_close(cef_life_span_handler_t *self, cef
     snprintf(message, sizeof(message), "CEF browser #%d on_before_close", browser->browser_id);
     gsde_log(message);
     log_live_browser_count("after close");
+    if (closed_browser && closed_browser->base.release) {
+        closed_browser->base.release((cef_base_ref_counted_t *)closed_browser);
+    }
 }
 
 static void copy_cef_string_to_buffer(const cef_string_t *cef_string, char *buffer, size_t buffer_size) {
@@ -698,13 +716,15 @@ void *gsde_chromium_browser_view(gsde_chromium_browser_t *browser) {
 void gsde_chromium_browser_destroy(gsde_chromium_browser_t *browser) {
 #if GSDE_HAVE_CEF_HEADERS
     if (!browser) return;
+    browser->destroy_requested = 1;
     if (browser->browser) {
         cef_browser_host_t *host = browser->browser->get_host ? browser->browser->get_host(browser->browser) : NULL;
-        if (host && host->close_browser) host->close_browser(host, 1);
-        if (browser->browser->base.release) browser->browser->base.release((cef_base_ref_counted_t *)browser->browser);
+        if (host && host->close_browser) {
+            host->close_browser(host, 1);
+            return;
+        }
     }
-    if (browser->request_context && browser->request_context->base.base.release) browser->request_context->base.base.release((cef_base_ref_counted_t *)browser->request_context);
-    free(browser);
+    free_chromium_browser(browser);
 #else
     (void)browser;
 #endif

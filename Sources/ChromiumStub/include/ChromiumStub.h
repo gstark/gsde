@@ -14,6 +14,7 @@ int gsde_chromium_execute_process(int argc, char **argv);
 int gsde_chromium_initialize(const char *root_cache_path, const char *cache_path, const char *browser_subprocess_path);
 void gsde_chromium_do_message_loop_work(void);
 void gsde_chromium_shutdown(void);
+int gsde_chromium_live_browser_count(void);
 
 gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int width, int height, const char *initial_url, const char *cache_path);
 void *gsde_chromium_browser_view(gsde_chromium_browser_t *browser);

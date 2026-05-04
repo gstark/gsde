@@ -300,6 +300,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
     private var chromiumMessageLoopTimer: Timer?
+    private var didPrepareChromiumShutdown = false
     private let frameAutosaveName = "GSDE.MainWindow"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -334,10 +335,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         true
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        prepareChromiumShutdown()
+        return .terminateNow
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
+        prepareChromiumShutdown()
+        gsde_chromium_shutdown()
+    }
+
+    private func prepareChromiumShutdown() {
+        guard !didPrepareChromiumShutdown else { return }
+        didPrepareChromiumShutdown = true
+        window?.contentView = nil
         chromiumMessageLoopTimer?.invalidate()
         chromiumMessageLoopTimer = nil
-        gsde_chromium_shutdown()
+        for _ in 0..<200 {
+            gsde_chromium_do_message_loop_work()
+            if gsde_chromium_live_browser_count() == 0 { break }
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
     }
 
     private func initializeChromiumIfAvailable() {
