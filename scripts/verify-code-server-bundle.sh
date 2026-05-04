@@ -21,7 +21,11 @@ fi
 
 TEMP_HOME="$(mktemp -d)"
 trap 'rm -rf "${TEMP_HOME}"' EXIT
-VERSION_OUTPUT="$(HOME="${TEMP_HOME}" XDG_CONFIG_HOME="${TEMP_HOME}/.config" "${EXECUTABLE}" --version 2>&1)"
+if ! VERSION_OUTPUT="$(HOME="${TEMP_HOME}" XDG_CONFIG_HOME="${TEMP_HOME}/.config" "${EXECUTABLE}" --version 2>&1)"; then
+  echo "Bundled code-server failed to report a version" >&2
+  printf '%s\n' "${VERSION_OUTPUT}" >&2
+  exit 1
+fi
 VERSION_LINE="$(printf '%s\n' "${VERSION_OUTPUT}" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)"
 if [[ -z "${VERSION_LINE}" ]]; then
   echo "Bundled code-server did not report a version" >&2
