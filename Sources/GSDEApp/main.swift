@@ -395,6 +395,10 @@ final class ThreePaneWorkspaceView: NSSplitView {
         arrangedSubviews.count > 1 && activeArrangedPane != nil
     }
 
+    var canCloseOtherPanes: Bool {
+        arrangedSubviews.count > 1 && activeArrangedPane != nil
+    }
+
     func focusNextPane() {
         focusPane(offset: 1)
     }
@@ -413,16 +417,25 @@ final class ThreePaneWorkspaceView: NSSplitView {
 
     func closeActivePane() {
         guard canCloseActivePane, let pane = activeArrangedPane else { return }
-        removeArrangedSubview(pane)
-        pane.removeFromSuperview()
-        if BrowserPaneView.activePane?.isDescendant(of: pane) == true {
-            BrowserPaneView.activePane = nil
-        }
-        if GhosttyHostView.activePane?.isDescendant(of: pane) == true {
-            GhosttyHostView.activePane = nil
-        }
+        removePane(pane)
+        BrowserPaneView.activePane = nil
+        GhosttyHostView.activePane = nil
         persistPaneLayout()
         distributePanesEvenly()
+    }
+
+    func closeOtherPanes() {
+        guard canCloseOtherPanes, let activePane = activeArrangedPane else { return }
+        arrangedSubviews
+            .filter { $0 !== activePane }
+            .forEach(removePane)
+        persistPaneLayout()
+        distributePanesEvenly()
+        if let browserPane = activePane as? BrowserPaneView {
+            window?.makeFirstResponder(browserPane)
+        } else if let terminalPane = activePane as? GhosttyHostView {
+            window?.makeFirstResponder(terminalPane)
+        }
     }
 
     func resetDividerPositions() {
@@ -440,6 +453,11 @@ final class ThreePaneWorkspaceView: NSSplitView {
             setHoldingPriority(.defaultLow, forSubviewAt: arrangedSubviews.count - 1)
         }
         autosaveName = splitAutosaveName
+    }
+
+    private func removePane(_ pane: NSView) {
+        removeArrangedSubview(pane)
+        pane.removeFromSuperview()
     }
 
     private func persistPaneLayout() {
@@ -661,6 +679,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         addMenuItem("New Terminal Pane", #selector(newTerminalPane(_:)), "n", modifiers: [.command, .shift], to: workspaceMenu)
         addMenuItem("Duplicate Active Browser Pane", #selector(duplicateActiveBrowserPane(_:)), "d", modifiers: [.command, .shift], to: workspaceMenu)
         addMenuItem("Close Active Pane", #selector(closeActivePane(_:)), "w", to: workspaceMenu)
+        addMenuItem("Close Other Panes", #selector(closeOtherPanes(_:)), "w", modifiers: [.command, .option], to: workspaceMenu)
         workspaceMenu.addItem(.separator())
         addMenuItem("Focus Next Pane", #selector(focusNextPane(_:)), "}", to: workspaceMenu)
         addMenuItem("Focus Previous Pane", #selector(focusPreviousPane(_:)), "{", to: workspaceMenu)
@@ -734,6 +753,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         (window?.contentView as? ThreePaneWorkspaceView)?.closeActivePane()
     }
 
+    @objc private func closeOtherPanes(_ sender: Any?) {
+        (window?.contentView as? ThreePaneWorkspaceView)?.closeOtherPanes()
+    }
+
     @objc private func focusNextPane(_ sender: Any?) {
         (window?.contentView as? ThreePaneWorkspaceView)?.focusNextPane()
     }
@@ -769,6 +792,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         switch menuItem.action {
         case #selector(closeActivePane(_:)):
             return (window?.contentView as? ThreePaneWorkspaceView)?.canCloseActivePane ?? false
+        case #selector(closeOtherPanes(_:)):
+            return (window?.contentView as? ThreePaneWorkspaceView)?.canCloseOtherPanes ?? false
         case #selector(duplicateActiveBrowserPane(_:)):
             return activeBrowserPane != nil
         case #selector(browserFocusLocation(_:)),
