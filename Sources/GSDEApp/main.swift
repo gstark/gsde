@@ -350,10 +350,20 @@ final class ThreePaneWorkspaceView: NSSplitView {
         distributePanesEvenly()
     }
 
+    var canCloseActivePane: Bool {
+        arrangedSubviews.count > 1 && activeArrangedPane != nil
+    }
+
     func closeActivePane() {
-        guard arrangedSubviews.count > 1, let pane = activeArrangedPane else { return }
+        guard canCloseActivePane, let pane = activeArrangedPane else { return }
         removeArrangedSubview(pane)
         pane.removeFromSuperview()
+        if BrowserPaneView.activePane?.isDescendant(of: pane) == true {
+            BrowserPaneView.activePane = nil
+        }
+        if GhosttyHostView.activePane?.isDescendant(of: pane) == true {
+            GhosttyHostView.activePane = nil
+        }
         persistPaneLayout()
         distributePanesEvenly()
     }
@@ -429,7 +439,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var window: NSWindow?
     private var chromiumMessageLoopTimer: Timer?
     private var didPrepareChromiumShutdown = false
@@ -634,6 +644,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let frame = Self.frameCoveringAllDisplays()
         window?.setFrame(frame, display: true, animate: true)
         (window?.contentView as? ThreePaneWorkspaceView)?.resetDividerPositions()
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(closeActivePane(_:)):
+            return (window?.contentView as? ThreePaneWorkspaceView)?.canCloseActivePane ?? false
+        case #selector(browserFocusLocation(_:)),
+             #selector(browserOpenFind(_:)),
+             #selector(browserFindNext(_:)),
+             #selector(browserFindPrevious(_:)),
+             #selector(browserGoBack(_:)),
+             #selector(browserGoForward(_:)),
+             #selector(browserReload(_:)),
+             #selector(browserReloadIgnoringCache(_:)),
+             #selector(browserStopLoading(_:)),
+             #selector(browserCut(_:)),
+             #selector(browserCopy(_:)),
+             #selector(browserPaste(_:)),
+             #selector(browserSelectAll(_:)),
+             #selector(browserCopyPageURL(_:)),
+             #selector(browserOpenPageInDefaultBrowser(_:)),
+             #selector(browserViewSource(_:)),
+             #selector(browserZoomIn(_:)),
+             #selector(browserZoomOut(_:)),
+             #selector(browserZoomReset(_:)),
+             #selector(browserPrint(_:)),
+             #selector(browserShowDeveloperTools(_:)):
+            return activeBrowserPane != nil
+        default:
+            return true
+        }
     }
 
     private var activeBrowserPane: BrowserPaneView? {
