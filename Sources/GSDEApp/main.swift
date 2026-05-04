@@ -255,6 +255,20 @@ final class GhosttyHostView: NSView {
         }
     }
 
+    var hasSelectionForCopy: Bool {
+        guard let host else { return false }
+        return gsde_ghostty_host_has_selection(host)
+    }
+
+    func copySelectionToPasteboard() {
+        guard let host, let selection = gsde_ghostty_host_read_selection(host) else { return }
+        defer { gsde_ghostty_free_string(selection) }
+        let text = String(cString: selection)
+        guard !text.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
     func pasteTextFromPasteboard() {
         guard let host,
               let text = NSPasteboard.general.string(forType: .string),
@@ -781,6 +795,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         mainMenu.addItem(terminalMenuItem)
         let terminalMenu = NSMenu(title: "Terminal")
         terminalMenuItem.submenu = terminalMenu
+        addMenuItem("Copy", #selector(terminalCopy(_:)), "c", to: terminalMenu)
         addMenuItem("Paste", #selector(terminalPaste(_:)), "v", to: terminalMenu)
 
         let browserMenuItem = NSMenuItem()
@@ -887,6 +902,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         switch menuItem.action {
         case #selector(closeActivePane(_:)):
             return (window?.contentView as? ThreePaneWorkspaceView)?.canCloseActivePane ?? false
+        case #selector(terminalCopy(_:)):
+            return activeTerminalPane?.hasSelectionForCopy ?? false
         case #selector(terminalPaste(_:)):
             return activeTerminalPane != nil && NSPasteboard.general.string(forType: .string) != nil
         case #selector(closeOtherPanes(_:)):
@@ -928,6 +945,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         GhosttyHostView.activePane
     }
 
+    @objc private func terminalCopy(_ sender: Any?) { activeTerminalPane?.copySelectionToPasteboard() }
     @objc private func terminalPaste(_ sender: Any?) { activeTerminalPane?.pasteTextFromPasteboard() }
 
     @objc private func browserFocusLocation(_ sender: Any?) { activeBrowserPane?.browserFocusLocation() }

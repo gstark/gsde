@@ -4,6 +4,7 @@
 #include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 struct ghostty_api {
     void *handle;
@@ -29,6 +30,9 @@ struct ghostty_api {
     bool (*surface_mouse_button)(ghostty_surface_t, ghostty_input_mouse_state_e, ghostty_input_mouse_button_e, ghostty_input_mods_e);
     void (*surface_mouse_pos)(ghostty_surface_t, double, double, ghostty_input_mods_e);
     void (*surface_mouse_scroll)(ghostty_surface_t, double, double, ghostty_input_scroll_mods_t);
+    bool (*surface_has_selection)(ghostty_surface_t);
+    bool (*surface_read_selection)(ghostty_surface_t, ghostty_text_s *);
+    void (*surface_free_text)(ghostty_surface_t, ghostty_text_s *);
 };
 
 struct gsde_ghostty_host {
@@ -106,6 +110,9 @@ static bool ensure_loaded(void) {
     LOAD_SYM(surface_mouse_button, "ghostty_surface_mouse_button");
     LOAD_SYM(surface_mouse_pos, "ghostty_surface_mouse_pos");
     LOAD_SYM(surface_mouse_scroll, "ghostty_surface_mouse_scroll");
+    LOAD_SYM(surface_has_selection, "ghostty_surface_has_selection");
+    LOAD_SYM(surface_read_selection, "ghostty_surface_read_selection");
+    LOAD_SYM(surface_free_text, "ghostty_surface_free_text");
 
     char *argv[] = { (char *)"GSDE", NULL };
     int init_result = api.init(1, argv);
@@ -231,6 +238,27 @@ void gsde_ghostty_host_mouse_pos(gsde_ghostty_host_t *host, double x, double y, 
 void gsde_ghostty_host_mouse_scroll(gsde_ghostty_host_t *host, double x, double y, ghostty_input_scroll_mods_t mods) {
     if (!host || !host->surface) return;
     api.surface_mouse_scroll(host->surface, x, y, mods);
+}
+
+bool gsde_ghostty_host_has_selection(gsde_ghostty_host_t *host) {
+    return host && host->surface && api.surface_has_selection(host->surface);
+}
+
+char *gsde_ghostty_host_read_selection(gsde_ghostty_host_t *host) {
+    if (!host || !host->surface) return NULL;
+    ghostty_text_s text = {0};
+    if (!api.surface_read_selection(host->surface, &text) || !text.text || text.text_len == 0) return NULL;
+    char *copy = malloc(text.text_len + 1);
+    if (copy) {
+        memcpy(copy, text.text, text.text_len);
+        copy[text.text_len] = '\0';
+    }
+    api.surface_free_text(host->surface, &text);
+    return copy;
+}
+
+void gsde_ghostty_free_string(char *text) {
+    free(text);
 }
 
 bool gsde_ghostty_host_is_loaded(gsde_ghostty_host_t *host) {
