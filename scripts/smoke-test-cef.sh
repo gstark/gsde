@@ -4,6 +4,12 @@ set -euo pipefail
 BROWSER_PANES="${GSDE_BROWSER_PANES:-2}"
 WAIT_SECONDS="${GSDE_SMOKE_WAIT_SECONDS:-35}"
 APP="build/GSDE.app/Contents/MacOS/GSDE"
+DEFAULT_URLS=(
+  "https://example.com"
+  "https://www.wikipedia.org"
+  "https://developer.apple.com"
+  "https://chromium.org"
+)
 LOG="/tmp/gsde_chromium.log"
 PROFILE_DIR="$HOME/Library/Application Support/GSDE/Chromium"
 
@@ -16,6 +22,15 @@ pkill -f 'GSDE.app/Contents' >/dev/null 2>&1 || true
 pkill -f 'GSDE Helper' >/dev/null 2>&1 || true
 rm -f "$PROFILE_DIR/SingletonLock" "$PROFILE_DIR/SingletonCookie" "$PROFILE_DIR/SingletonSocket"
 rm -f "$LOG"
+
+if [[ -z "${GSDE_BROWSER_URLS:-}" ]]; then
+  urls=()
+  for ((i = 0; i < BROWSER_PANES; i++)); do
+    urls+=("${DEFAULT_URLS[$((i % ${#DEFAULT_URLS[@]}))]}")
+  done
+  GSDE_BROWSER_URLS="$(IFS=,; echo "${urls[*]}")"
+fi
+export GSDE_BROWSER_URLS
 
 GSDE_ENABLE_CEF=1 GSDE_BROWSER_PANES="$BROWSER_PANES" "$APP" >/tmp/gsde-cef-smoke.out 2>/tmp/gsde-cef-smoke.err &
 app_pid=$!
