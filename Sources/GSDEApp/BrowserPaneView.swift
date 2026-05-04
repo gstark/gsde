@@ -31,6 +31,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     private var cefBrowser: OpaquePointer?
     private weak var cefNativeView: NSView?
     private var cefStatusTimer: Timer?
+    private var keyCommandMonitor: Any?
     private var hasStartedWebKitFallbackLoad = false
     private var pendingInitialURL: URL
 
@@ -78,6 +79,10 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         if window == nil {
             cefStatusTimer?.invalidate()
             cefStatusTimer = nil
+            if let keyCommandMonitor {
+                NSEvent.removeMonitor(keyCommandMonitor)
+                self.keyCommandMonitor = nil
+            }
             if let cefBrowser {
                 gsde_chromium_browser_destroy(cefBrowser)
                 self.cefBrowser = nil
@@ -85,6 +90,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             return
         }
 
+        installKeyCommandMonitorIfNeeded()
         createCEFBrowserIfPossible()
         if window?.firstResponder == nil {
             window?.makeFirstResponder(cefBrowser == nil ? webView : browserContainer)
@@ -117,6 +123,53 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             gsde_chromium_browser_focus(cefBrowser, 1)
         }
         super.mouseDown(with: event)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if handleBrowserKeyCommand(event) { return }
+        super.keyDown(with: event)
+    }
+
+    private func installKeyCommandMonitorIfNeeded() {
+        guard keyCommandMonitor == nil else { return }
+        keyCommandMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self,
+                  self.window === event.window,
+                  self.isFirstResponderInsidePane,
+                  self.handleBrowserKeyCommand(event)
+            else { return event }
+            return nil
+        }
+    }
+
+    private var isFirstResponderInsidePane: Bool {
+        guard let responder = window?.firstResponder else { return false }
+        if responder === self || responder === urlField { return true }
+        guard let responderView = responder as? NSView else { return false }
+        if responderView.isDescendant(of: self) { return true }
+        if let cefNativeView, responderView.isDescendant(of: cefNativeView) { return true }
+        return false
+    }
+
+    private func handleBrowserKeyCommand(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags == .command,
+              let characters = event.charactersIgnoringModifiers?.lowercased()
+        else { return false }
+
+        switch characters {
+        case "l":
+            focusURLField()
+        case "r":
+            reload()
+        case "[":
+            goBack()
+        case "]":
+            goForward()
+        default:
+            return false
+        }
+        return true
     }
 
     private func commonInit() {
@@ -231,6 +284,12 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     @objc private func navigateFromURLField() {
         guard let url = normalizedURL(from: urlField.stringValue) else { return }
         load(url)
+        window?.makeFirstResponder(self)
+    }
+
+    @objc private func focusURLField() {
+        window?.makeFirstResponder(urlField)
+        urlField.currentEditor()?.selectAll(nil)
     }
 
     @objc private func goBack() {
