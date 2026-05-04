@@ -92,7 +92,7 @@ A complete CEF macOS app normally needs more than the framework:
 - URL bar
 - Back/forward/reload/stop
 - Find, zoom, print, DevTools, and popup handling
-- Safe native context menu behavior with navigation, edit, print, source, and DevTools actions
+- Safe native context menu behavior with navigation, URL copy/open, edit, print, source, and DevTools actions
 - Persistent website data via per-pane Chromium profiles
 - Multiple pane instances
 

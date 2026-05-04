@@ -261,6 +261,17 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         menu.addItem(stopItem)
 
         menu.addItem(.separator())
+        let copyURLItem = NSMenuItem(title: "Copy Page URL", action: #selector(copyPageURL), keyEquivalent: "")
+        copyURLItem.target = self
+        copyURLItem.isEnabled = currentPageURL != nil
+        menu.addItem(copyURLItem)
+
+        let openExternalItem = NSMenuItem(title: "Open Page in Default Browser", action: #selector(openPageInDefaultBrowser), keyEquivalent: "")
+        openExternalItem.target = self
+        openExternalItem.isEnabled = currentPageURL != nil
+        menu.addItem(openExternalItem)
+
+        menu.addItem(.separator())
         let cutItem = NSMenuItem(title: "Cut", action: #selector(cutSelection), keyEquivalent: "")
         cutItem.target = self
         menu.addItem(cutItem)
@@ -504,6 +515,8 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     @objc func browserCopy() { copySelection() }
     @objc func browserPaste() { pasteClipboard() }
     @objc func browserSelectAll() { selectAllContent() }
+    @objc func browserCopyPageURL() { copyPageURL() }
+    @objc func browserOpenPageInDefaultBrowser() { openPageInDefaultBrowser() }
     @objc func browserViewSource() { viewSource() }
     @objc func browserShowDeveloperTools() { showDeveloperTools() }
     @objc func browserPrint() { printPage() }
@@ -618,6 +631,31 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         } else {
             NSSound.beep()
         }
+    }
+
+    @objc private func copyPageURL() {
+        guard let url = currentPageURL else {
+            NSSound.beep()
+            return
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url.absoluteString, forType: .string)
+    }
+
+    @objc private func openPageInDefaultBrowser() {
+        guard let url = currentPageURL else {
+            NSSound.beep()
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
+    private var currentPageURL: URL? {
+        if let cefBrowser {
+            let value = String(cString: gsde_chromium_browser_current_url(cefBrowser))
+            return URL(string: value)
+        }
+        return webView.url ?? URL(string: urlField.stringValue)
     }
 
     @objc private func printPage() {

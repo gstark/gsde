@@ -438,6 +438,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         addMenuItem("Copy", #selector(browserCopy(_:)), "c", to: browserMenu)
         addMenuItem("Paste", #selector(browserPaste(_:)), "v", to: browserMenu)
         addMenuItem("Select All", #selector(browserSelectAll(_:)), "a", to: browserMenu)
+        browserMenu.addItem(.separator())
+        addMenuItem("Copy Page URL", #selector(browserCopyPageURL(_:)), "", modifiers: [], to: browserMenu)
+        addMenuItem("Open Page in Default Browser", #selector(browserOpenPageInDefaultBrowser(_:)), "", modifiers: [], to: browserMenu)
         addMenuItem("View Source", #selector(browserViewSource(_:)), "u", modifiers: [.command, .option], to: browserMenu)
         browserMenu.addItem(.separator())
         addMenuItem("Zoom In", #selector(browserZoomIn(_:)), "+", to: browserMenu)
@@ -493,6 +496,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func browserCopy(_ sender: Any?) { activeBrowserPane?.browserCopy() }
     @objc private func browserPaste(_ sender: Any?) { activeBrowserPane?.browserPaste() }
     @objc private func browserSelectAll(_ sender: Any?) { activeBrowserPane?.browserSelectAll() }
+    @objc private func browserCopyPageURL(_ sender: Any?) { activeBrowserPane?.browserCopyPageURL() }
+    @objc private func browserOpenPageInDefaultBrowser(_ sender: Any?) { activeBrowserPane?.browserOpenPageInDefaultBrowser() }
     @objc private func browserViewSource(_ sender: Any?) { activeBrowserPane?.browserViewSource() }
     @objc private func browserZoomIn(_ sender: Any?) { activeBrowserPane?.browserZoomIn() }
     @objc private func browserZoomOut(_ sender: Any?) { activeBrowserPane?.browserZoomOut() }
