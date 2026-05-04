@@ -286,15 +286,17 @@ public actor CodeServerManager {
         exitedByPaneID[request.paneID] = nil
 
         let port = try Self.reserveUnusedLocalhostPort()
-        do {
-            return try await start(request, usingReservedPort: port)
-        } catch {
-            Self.releaseReservedLocalhostPort(port)
-            throw error
-        }
+        return try await start(request, usingReservedPort: port)
     }
 
     private func start(_ request: CodeServerStartRequest, usingReservedPort port: UInt16) async throws -> ManagedCodeServerSession {
+        var portReservationTransferredToRunningProcess = false
+        defer {
+            if !portReservationTransferredToRunningProcess {
+                Self.releaseReservedLocalhostPort(port)
+            }
+        }
+
         let password = try Self.generatePassword()
         let executableURL = try request.executableURL ?? bundleResolver.executableURL()
         let configuration = try launchBuilder.configuration(
@@ -323,6 +325,7 @@ public actor CodeServerManager {
             password: password,
             outputBuffer: outputBuffer
         )
+        portReservationTransferredToRunningProcess = true
 
         do {
             try await readinessChecker.waitUntilReady(
@@ -333,19 +336,17 @@ public actor CodeServerManager {
             )
             try Task.checkCancellation()
         } catch let error as CodeServerManagerError {
-            runningByPaneID[request.paneID] = nil
+            stopRunningProcessIfPresent(paneID: request.paneID)
             exitedByPaneID[request.paneID] = nil
-            Self.terminateAndWait(handle)
             throw Self.rewritePaneID(in: error, paneID: request.paneID)
         } catch {
-            runningByPaneID[request.paneID] = nil
+            stopRunningProcessIfPresent(paneID: request.paneID)
             exitedByPaneID[request.paneID] = nil
-            Self.terminateAndWait(handle)
             throw error
         }
 
         if !handle.isRunning {
-            runningByPaneID[request.paneID] = nil
+            stopRunningProcessIfPresent(paneID: request.paneID)
             exitedByPaneID[request.paneID] = nil
             throw CodeServerManagerError.processExitedBeforeReady(
                 paneID: request.paneID,
@@ -379,9 +380,7 @@ public actor CodeServerManager {
 
     public func stop(paneID: String) {
         exitedByPaneID[paneID] = nil
-        guard let running = runningByPaneID.removeValue(forKey: paneID) else { return }
-        Self.terminateAndWait(running.handle)
-        Self.releaseReservedLocalhostPort(running.port)
+        stopRunningProcessIfPresent(paneID: paneID)
     }
 
     public func stopAll() {
@@ -399,6 +398,12 @@ public actor CodeServerManager {
         runningByPaneID[paneID] = nil
         Self.releaseReservedLocalhostPort(running.port)
         exitedByPaneID[paneID] = .exited(exitCode: exitCode, diagnostics: running.outputBuffer.diagnostics)
+    }
+
+    private func stopRunningProcessIfPresent(paneID: String) {
+        guard let running = runningByPaneID.removeValue(forKey: paneID) else { return }
+        Self.terminateAndWait(running.handle)
+        Self.releaseReservedLocalhostPort(running.port)
     }
 
     private static func terminateAndWait(_ handle: any CodeServerProcessHandle) {
