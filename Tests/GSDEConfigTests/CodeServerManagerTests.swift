@@ -247,6 +247,35 @@ struct CodeServerManagerTests {
         ))
     }
 
+    @Test("stale exits from stopped processes do not clear a restarted pane")
+    func staleExitsFromStoppedProcessesDoNotClearRestartedPane() async throws {
+        let project = try temporaryDirectory()
+        let launcher = RecordingCodeServerLauncher()
+        launcher.exitsOnTerminate = false
+        let manager = CodeServerManager(
+            launchBuilder: CodeServerLaunchBuilder(stateResolver: VSCodePaneStateResolver(environment: ["GSDE_PROJECT_DIR": project.path])),
+            processLauncher: launcher,
+            readinessChecker: ImmediateReadinessChecker()
+        )
+        let request = CodeServerStartRequest(
+            paneID: "editor",
+            configSource: .projectDefault(project.appendingPathComponent(".config/gsde/config.toml")),
+            executableURL: URL(fileURLWithPath: "/tmp/fake-code-server"),
+            readinessTimeout: 1
+        )
+
+        _ = try await manager.start(request)
+        await manager.stop(paneID: "editor")
+        _ = try await manager.start(request)
+        launcher.handles[1].emit(stream: .stdout, text: "new process\n")
+        launcher.handles[0].exit(status: 15)
+        try await Task.sleep(nanoseconds: 10_000_000)
+
+        #expect(await manager.status(forPaneID: "editor") == .running(
+            diagnostics: CodeServerProcessDiagnostics(stdout: "new process\n", stderr: "")
+        ))
+    }
+
     private func temporaryDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -260,6 +289,7 @@ private final class RecordingCodeServerLauncher: CodeServerProcessLaunching, @un
     private var _handles: [RecordingProcessHandle] = []
     var stdoutOnLaunch = ""
     var stderrOnLaunch = ""
+    var exitsOnTerminate = true
 
     var launchedConfigurations: [CodeServerLaunchConfiguration] {
         lock.withLock { _launchedConfigurations }
@@ -274,7 +304,11 @@ private final class RecordingCodeServerLauncher: CodeServerProcessLaunching, @un
         outputHandler: @escaping CodeServerOutputHandler,
         terminationHandler: @escaping CodeServerTerminationHandler
     ) throws -> any CodeServerProcessHandle {
-        let handle = RecordingProcessHandle(terminationHandler: terminationHandler, outputHandler: outputHandler)
+        let handle = RecordingProcessHandle(
+            terminationHandler: terminationHandler,
+            outputHandler: outputHandler,
+            exitsOnTerminate: exitsOnTerminate
+        )
         lock.withLock {
             _launchedConfigurations.append(configuration)
             _handles.append(handle)
@@ -298,11 +332,17 @@ private final class RecordingProcessHandle: CodeServerProcessHandle, @unchecked 
     private var status: Int32 = 0
     private let terminationHandler: CodeServerTerminationHandler
     private let outputHandler: CodeServerOutputHandler
+    private let exitsOnTerminate: Bool
     private(set) var terminateCallCount = 0
 
-    init(terminationHandler: @escaping CodeServerTerminationHandler, outputHandler: @escaping CodeServerOutputHandler) {
+    init(
+        terminationHandler: @escaping CodeServerTerminationHandler,
+        outputHandler: @escaping CodeServerOutputHandler,
+        exitsOnTerminate: Bool = true
+    ) {
         self.terminationHandler = terminationHandler
         self.outputHandler = outputHandler
+        self.exitsOnTerminate = exitsOnTerminate
     }
 
     var isRunning: Bool { lock.withLock { running } }
@@ -324,7 +364,7 @@ private final class RecordingProcessHandle: CodeServerProcessHandle, @unchecked 
 
     func terminate() {
         lock.withLock { terminateCallCount += 1 }
-        exit(status: 15)
+        if exitsOnTerminate { exit(status: 15) }
     }
 
     func waitUntilExit() {}

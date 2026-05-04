@@ -245,6 +245,7 @@ private func emitRemainingText(
 
 public actor CodeServerManager {
     private struct RunningProcess: Sendable {
+        let launchID: UUID
         let handle: any CodeServerProcessHandle
         let launchConfiguration: CodeServerLaunchConfiguration
         let password: String
@@ -295,14 +296,16 @@ public actor CodeServerManager {
         try configuration.stateDirectories.createDirectories()
 
         let outputBuffer = CodeServerOutputBuffer()
+        let launchID = UUID()
         let handle = try processLauncher.launch(
             configuration: configuration,
             outputHandler: { stream, text in outputBuffer.append(text, to: stream) },
             terminationHandler: { [weak self] exitCode in
-                Task { await self?.recordExit(paneID: request.paneID, exitCode: exitCode) }
+                Task { await self?.recordExit(paneID: request.paneID, launchID: launchID, exitCode: exitCode) }
             }
         )
         runningByPaneID[request.paneID] = RunningProcess(
+            launchID: launchID,
             handle: handle,
             launchConfiguration: configuration,
             password: password,
@@ -375,8 +378,9 @@ public actor CodeServerManager {
         for handle in handles { handle.terminate() }
     }
 
-    private func recordExit(paneID: String, exitCode: Int32) {
-        guard let running = runningByPaneID.removeValue(forKey: paneID) else { return }
+    private func recordExit(paneID: String, launchID: UUID, exitCode: Int32) {
+        guard let running = runningByPaneID[paneID], running.launchID == launchID else { return }
+        runningByPaneID[paneID] = nil
         exitedByPaneID[paneID] = .exited(exitCode: exitCode, diagnostics: running.outputBuffer.diagnostics)
     }
 
