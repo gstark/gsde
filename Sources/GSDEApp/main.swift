@@ -2,13 +2,15 @@ import AppKit
 import ChromiumStub
 import GhosttyShim
 
-final class GhosttyHostView: NSView {
+final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
     static weak var activePane: GhosttyHostView?
 
     private var host: OpaquePointer?
     private var statusLabel: NSTextField?
     private var displayLink: Timer?
     private var activePaneObserver: NSObjectProtocol?
+    private var markedText = ""
+    private var handledTextInput = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -124,6 +126,12 @@ final class GhosttyHostView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
+        if shouldUseTextInput(for: event) {
+            handledTextInput = false
+            interpretKeyEvents([event])
+            if handledTextInput { return }
+        }
+
         let action = event.isARepeat ? GHOSTTY_ACTION_REPEAT : GHOSTTY_ACTION_PRESS
         _ = sendKey(event, action: action, text: event.ghosttyCharacters)
     }
@@ -167,6 +175,18 @@ final class GhosttyHostView: NSView {
         }
 
         _ = sendKey(event, action: action)
+    }
+
+    private func shouldUseTextInput(for event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags.intersection([.command, .control]).isEmpty,
+              let characters = event.characters,
+              !characters.isEmpty
+        else { return false }
+
+        return characters.unicodeScalars.contains { scalar in
+            scalar.value >= 0x20 && !(scalar.value >= 0xF700 && scalar.value <= 0xF8FF)
+        }
     }
 
     private func sendMousePosition(_ event: NSEvent) {
@@ -340,6 +360,52 @@ final class GhosttyHostView: NSView {
             UInt32(max(1, bounds.width * scale)),
             UInt32(max(1, bounds.height * scale))
         )
+    }
+
+    func insertText(_ string: Any, replacementRange: NSRange) {
+        let text = plainText(from: string)
+        guard !text.isEmpty else { return }
+        markedText = ""
+        handledTextInput = true
+        text.withCString { pointer in
+            gsde_ghostty_host_text(host, pointer, UInt(text.utf8.count))
+        }
+        gsde_ghostty_host_preedit(host, "", 0)
+    }
+
+    override func doCommand(by selector: Selector) {
+        handledTextInput = false
+    }
+
+    func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        markedText = plainText(from: string)
+        handledTextInput = true
+        markedText.withCString { pointer in
+            gsde_ghostty_host_preedit(host, pointer, UInt(markedText.utf8.count))
+        }
+    }
+
+    func unmarkText() {
+        markedText = ""
+        gsde_ghostty_host_preedit(host, "", 0)
+    }
+
+    func hasMarkedText() -> Bool { !markedText.isEmpty }
+    func markedRange() -> NSRange { markedText.isEmpty ? NSRange(location: NSNotFound, length: 0) : NSRange(location: 0, length: markedText.utf16.count) }
+    func selectedRange() -> NSRange { NSRange(location: markedText.utf16.count, length: 0) }
+    func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
+    func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? { nil }
+    func characterIndex(for point: NSPoint) -> Int { 0 }
+
+    func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
+        let localPoint = NSPoint(x: 0, y: bounds.height)
+        let windowPoint = convert(localPoint, to: nil)
+        return window?.convertToScreen(NSRect(origin: windowPoint, size: .zero)) ?? .zero
+    }
+
+    private func plainText(from value: Any) -> String {
+        if let attributed = value as? NSAttributedString { return attributed.string }
+        return value as? String ?? ""
     }
 }
 
