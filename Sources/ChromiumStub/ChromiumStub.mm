@@ -985,6 +985,27 @@ static void set_cef_string(const char *utf8, cef_string_t *out) {
     if (utf8 && utf8[0] != '\0') cef_string_utf8_to_utf16_ptr(utf8, strlen(utf8), out);
 }
 
+class ScopedCefString {
+public:
+    explicit ScopedCefString(const char *utf8) {
+        memset(&value_, 0, sizeof(value_));
+        set_cef_string(utf8, &value_);
+    }
+
+    ~ScopedCefString() {
+        cef_string_utf16_clear_ptr(&value_);
+    }
+
+    ScopedCefString(const ScopedCefString &) = delete;
+    ScopedCefString &operator=(const ScopedCefString &) = delete;
+
+    cef_string_t *get() { return &value_; }
+    const cef_string_t *get() const { return &value_; }
+
+private:
+    cef_string_t value_;
+};
+
 static cef_app_t global_cef_app;
 static atomic_int global_cef_app_ref_count{1};
 
@@ -1010,11 +1031,8 @@ static int CEF_CALLBACK gsde_app_has_at_least_one_ref(cef_base_ref_counted_t *ba
 
 static void append_switch(cef_command_line_t *command_line, const char *name) {
     if (!command_line || !command_line->append_switch || !name) return;
-    cef_string_t cef_name;
-    memset(&cef_name, 0, sizeof(cef_name));
-    set_cef_string(name, &cef_name);
-    command_line->append_switch(command_line, &cef_name);
-    cef_string_utf16_clear_ptr(&cef_name);
+    ScopedCefString cef_name(name);
+    command_line->append_switch(command_line, cef_name.get());
 }
 
 static void CEF_CALLBACK gsde_on_before_command_line_processing(cef_app_t *self, const cef_string_t *process_type, cef_command_line_t *command_line) {
@@ -1120,13 +1138,10 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     memset(&browser_settings, 0, sizeof(browser_settings));
     browser_settings.size = sizeof(browser_settings);
 
-    cef_string_t url;
-    memset(&url, 0, sizeof(url));
-    set_cef_string(initial_url ? initial_url : "about:blank", &url);
+    ScopedCefString url(initial_url ? initial_url : "about:blank");
 
-    browser->browser = cef_browser_host_create_browser_sync_ptr(&window_info, &browser->client, &url, &browser_settings, NULL, browser->request_context);
+    browser->browser = cef_browser_host_create_browser_sync_ptr(&window_info, &browser->client, url.get(), &browser_settings, NULL, browser->request_context);
     browser->view = window_info.view;
-    cef_string_utf16_clear_ptr(&url);
 
     if (!browser->browser) {
         set_last_error("cef_browser_host_create_browser_sync returned NULL");
@@ -1218,11 +1233,8 @@ void gsde_chromium_browser_load_url(gsde_chromium_browser_t *browser, const char
     snprintf(browser->current_url, sizeof(browser->current_url), "%s", url);
     cef_frame_t *frame = main_frame_for_browser(browser);
     if (!frame) return;
-    cef_string_t cef_url;
-    memset(&cef_url, 0, sizeof(cef_url));
-    set_cef_string(url, &cef_url);
-    frame->load_url(frame, &cef_url);
-    cef_string_utf16_clear_ptr(&cef_url);
+    ScopedCefString cef_url(url);
+    frame->load_url(frame, cef_url.get());
     if (frame->base.release) frame->base.release((cef_base_ref_counted_t *)frame);
 #else
     (void)browser; (void)url;
@@ -1292,11 +1304,8 @@ void gsde_chromium_browser_find(gsde_chromium_browser_t *browser, const char *qu
     if (!browser || !browser->browser) return;
     cef_browser_host_t *host = browser->browser->get_host(browser->browser);
     if (!host || !host->find) return;
-    cef_string_t cef_query;
-    memset(&cef_query, 0, sizeof(cef_query));
-    if (query && query[0] != '\0') set_cef_string(query, &cef_query);
-    host->find(host, query && query[0] != '\0' ? &cef_query : NULL, forward ? 1 : 0, match_case ? 1 : 0, find_next ? 1 : 0);
-    cef_string_utf16_clear_ptr(&cef_query);
+    ScopedCefString cef_query(query && query[0] != '\0' ? query : NULL);
+    host->find(host, query && query[0] != '\0' ? cef_query.get() : NULL, forward ? 1 : 0, match_case ? 1 : 0, find_next ? 1 : 0);
 #else
     (void)browser; (void)query; (void)forward; (void)match_case; (void)find_next;
 #endif
