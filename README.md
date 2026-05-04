@@ -97,6 +97,8 @@ GSDE_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" make sign-
 GSDE_NOTARY_PROFILE="notarytool-profile" GSDE_RELEASE_ARCHIVE=dist/GSDE-...zip make notarize-release
 ```
 
+`make sign-release` uses `GSDE.entitlements` by default, which enables the hardened-runtime allowances Chromium/CEF commonly needs for JIT, executable memory, and bundled framework loading. Override with `GSDE_ENTITLEMENTS=/path/to/file.entitlements` if needed.
+
 Reset saved app state and Chromium profile data:
 
 ```sh

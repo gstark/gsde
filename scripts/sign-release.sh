@@ -4,6 +4,9 @@ set -euo pipefail
 APP_BUNDLE="${1:-build/GSDE.app}"
 IDENTITY="${GSDE_CODESIGN_IDENTITY:-}"
 ENTITLEMENTS="${GSDE_ENTITLEMENTS:-}"
+if [[ -z "$ENTITLEMENTS" && -f "GSDE.entitlements" ]]; then
+  ENTITLEMENTS="GSDE.entitlements"
+fi
 
 if [[ ! -d "$APP_BUNDLE" ]]; then
   echo "Missing app bundle: $APP_BUNDLE" >&2
@@ -17,6 +20,10 @@ fi
 
 args=(--force --deep --options runtime --timestamp --sign "$IDENTITY")
 if [[ -n "$ENTITLEMENTS" ]]; then
+  if [[ ! -f "$ENTITLEMENTS" ]]; then
+    echo "Missing entitlements file: $ENTITLEMENTS" >&2
+    exit 2
+  fi
   args+=(--entitlements "$ENTITLEMENTS")
 fi
 args+=("$APP_BUNDLE")
