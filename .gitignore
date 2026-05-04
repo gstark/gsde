@@ -3,3 +3,5 @@ build/
 external/ghostty/
 external/cef/
 .DS_Store
+.flux
+
