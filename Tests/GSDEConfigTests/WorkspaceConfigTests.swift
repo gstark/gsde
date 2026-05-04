@@ -125,6 +125,104 @@ struct WorkspaceConfigTests {
         #expect(result.config.panes.first?.padding == PaneBoxEdges(top: 3, right: 3, bottom: 3, left: 3))
     }
 
+    @Test("vscode pane state uses GSDE_PROJECT_DIR and pane partitioned directories")
+    func vscodePaneStateUsesProjectDirectoryAndPanePartition() throws {
+        let project = try temporaryDirectory()
+        let configURL = project
+            .appendingPathComponent(".config", isDirectory: true)
+            .appendingPathComponent("gsde", isDirectory: true)
+            .appendingPathComponent("config.toml")
+        let resolver = VSCodePaneStateResolver(environment: ["GSDE_PROJECT_DIR": project.path])
+
+        let state = try resolver.directories(paneID: "editor/main", configSource: .projectDefault(configURL))
+
+        let paneRoot = project.appendingPathComponent(".config/gsde/panes/editor%2Fmain", isDirectory: true)
+        #expect(state.workspaceFolder == project.standardizedFileURL)
+        #expect(state.gsdeConfigDirectory == project.appendingPathComponent(".config/gsde", isDirectory: true).standardizedFileURL)
+        #expect(state.paneStateDirectory == paneRoot.standardizedFileURL)
+        #expect(state.codeServerUserDataDirectory == paneRoot.appendingPathComponent("code-server/user-data", isDirectory: true).standardizedFileURL)
+        #expect(state.codeServerExtensionsDirectory == paneRoot.appendingPathComponent("code-server/extensions", isDirectory: true).standardizedFileURL)
+        #expect(state.cefCacheDirectory == paneRoot.appendingPathComponent("cef-cache", isDirectory: true).standardizedFileURL)
+    }
+
+    @Test("vscode pane state uses containing config directory without GSDE_PROJECT_DIR")
+    func vscodePaneStateUsesConfigDirectoryWithoutProjectEnvironment() throws {
+        let configDirectory = try temporaryDirectory()
+        let configURL = configDirectory.appendingPathComponent("workspace.toml")
+        let resolver = VSCodePaneStateResolver(environment: [:])
+
+        let state = try resolver.directories(paneID: "editor", configSource: .environment(configURL))
+
+        #expect(state.workspaceFolder == configDirectory.standardizedFileURL)
+        #expect(state.gsdeConfigDirectory == configDirectory.standardizedFileURL)
+        #expect(state.paneStateDirectory == configDirectory.appendingPathComponent("panes/editor", isDirectory: true).standardizedFileURL)
+    }
+
+    @Test("code-server launch configuration is deterministic")
+    func codeServerLaunchConfigurationIsDeterministic() throws {
+        let project = try temporaryDirectory()
+        let configURL = project.appendingPathComponent(".config/gsde/config.toml")
+        let builder = CodeServerLaunchBuilder(stateResolver: VSCodePaneStateResolver(environment: ["GSDE_PROJECT_DIR": project.path]))
+        let executableURL = URL(fileURLWithPath: "/Applications/GSDE.app/Contents/Resources/code-server/bin/code-server")
+
+        let launch = try builder.configuration(
+            executableURL: executableURL,
+            paneID: "editor",
+            configSource: .projectDefault(configURL),
+            port: 49152,
+            password: "generated-password"
+        )
+
+        let paneRoot = project.appendingPathComponent(".config/gsde/panes/editor", isDirectory: true)
+        #expect(launch.executableURL == executableURL)
+        #expect(launch.serverURL.absoluteString == "http://127.0.0.1:49152/")
+        #expect(launch.environment == ["PASSWORD": "generated-password"])
+        #expect(launch.arguments == [
+            "--bind-addr", "127.0.0.1:49152",
+            "--auth", "password",
+            "--user-data-dir", paneRoot.appendingPathComponent("code-server/user-data", isDirectory: true).path,
+            "--extensions-dir", paneRoot.appendingPathComponent("code-server/extensions", isDirectory: true).path,
+            "--disable-telemetry",
+            "--disable-update-check",
+            project.path
+        ])
+    }
+
+    @Test("code-server launch validation rejects missing inputs")
+    func codeServerLaunchValidationRejectsMissingInputs() throws {
+        let executableURL = URL(fileURLWithPath: "/bin/code-server")
+        let configURL = URL(fileURLWithPath: "/tmp/project/.config/gsde/config.toml")
+        let builder = CodeServerLaunchBuilder(stateResolver: VSCodePaneStateResolver(environment: [:]))
+
+        #expect(throws: VSCodePaneLaunchError.invalidPort(0)) {
+            try builder.configuration(executableURL: executableURL, paneID: "editor", configSource: .environment(configURL), port: 0, password: "secret")
+        }
+        #expect(throws: VSCodePaneLaunchError.emptyPassword) {
+            try builder.configuration(executableURL: executableURL, paneID: "editor", configSource: .environment(configURL), port: 3000, password: "")
+        }
+        #expect(throws: VSCodePaneLaunchError.emptyPaneID) {
+            try builder.configuration(executableURL: executableURL, paneID: " ", configSource: .environment(configURL), port: 3000, password: "secret")
+        }
+        #expect(throws: VSCodePaneLaunchError.missingConfigFile) {
+            try builder.configuration(executableURL: executableURL, paneID: "editor", configSource: .builtIn, port: 3000, password: "secret")
+        }
+    }
+
+    @Test("vscode pane state directories are created")
+    func vscodePaneStateDirectoriesAreCreated() throws {
+        let configDirectory = try temporaryDirectory()
+        let state = try VSCodePaneStateResolver(environment: [:]).directories(
+            paneID: "editor",
+            configSource: .environment(configDirectory.appendingPathComponent("config.toml"))
+        )
+
+        try state.createDirectories()
+
+        #expect(FileManager.default.fileExists(atPath: state.codeServerUserDataDirectory.path))
+        #expect(FileManager.default.fileExists(atPath: state.codeServerExtensionsDirectory.path))
+        #expect(FileManager.default.fileExists(atPath: state.cefCacheDirectory.path))
+    }
+
     @Test("vscode panes reject browser and terminal-only fields")
     func vscodePanesRejectBrowserAndTerminalOnlyFields() throws {
         let invalidFields = [
