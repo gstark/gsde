@@ -583,6 +583,14 @@ void gsde_chromium_browser_reload(gsde_chromium_browser_t *browser) {
 #endif
 }
 
+void gsde_chromium_browser_reload_ignore_cache(gsde_chromium_browser_t *browser) {
+#if GSDE_HAVE_CEF_HEADERS
+    if (browser && browser->browser) browser->browser->reload_ignore_cache(browser->browser);
+#else
+    (void)browser;
+#endif
+}
+
 void gsde_chromium_browser_focus(gsde_chromium_browser_t *browser, int focused) {
 #if GSDE_HAVE_CEF_HEADERS
     if (!browser || !browser->browser) return;

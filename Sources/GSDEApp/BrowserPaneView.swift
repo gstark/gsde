@@ -153,19 +153,21 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
 
     private func handleBrowserKeyCommand(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard flags == .command,
-              let characters = event.charactersIgnoringModifiers?.lowercased()
-        else { return false }
+        guard let characters = event.charactersIgnoringModifiers?.lowercased() else { return false }
 
-        switch characters {
-        case "l":
+        switch (flags, characters) {
+        case ([.command], "l"):
             focusURLField()
-        case "r":
-            reload()
-        case "[":
+        case ([.command], "r"):
+            performReload(ignoringCache: false)
+        case ([.command, .shift], "r"):
+            performReload(ignoringCache: true)
+        case ([.command], "["):
             goBack()
-        case "]":
+        case ([.command], "]"):
             goForward()
+        case ([.command, .option], "i"):
+            showDeveloperTools()
         default:
             return false
         }
@@ -311,9 +313,19 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     }
 
     @objc private func reload() {
+        performReload(ignoringCache: false)
+    }
+
+    private func performReload(ignoringCache: Bool) {
         if let cefBrowser {
-            gsde_chromium_browser_reload(cefBrowser)
+            if ignoringCache {
+                gsde_chromium_browser_reload_ignore_cache(cefBrowser)
+            } else {
+                gsde_chromium_browser_reload(cefBrowser)
+            }
             updateNavigationButtons()
+        } else if ignoringCache {
+            webView.reloadFromOrigin()
         } else {
             webView.reload()
         }
@@ -390,7 +402,9 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     private func startCEFStatusPolling() {
         cefStatusTimer?.invalidate()
         cefStatusTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            self?.refreshCEFState()
+            Task { @MainActor in
+                self?.refreshCEFState()
+            }
         }
         refreshCEFState()
     }
@@ -408,6 +422,8 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             backendStatusLabel.stringValue = "CEF loading…"
         } else if httpStatus > 0 {
             backendStatusLabel.stringValue = "CEF HTTP \(httpStatus)"
+        } else if httpStatus < 0 {
+            backendStatusLabel.stringValue = "CEF error \(httpStatus)"
         } else {
             backendStatusLabel.stringValue = String(cString: gsde_chromium_backend_status())
         }
