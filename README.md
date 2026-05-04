@@ -52,7 +52,10 @@ To test multiple Chromium browser instances in one window:
 
 ```sh
 make run-cef-two-browsers
+make run-cef-four-browsers
 # or
+GSDE_BROWSER_PANES=2 make run-cef
+# foreground:
 GSDE_BROWSER_PANES=2 make run-cef-foreground
 ```
 
@@ -70,6 +73,7 @@ Run a CLI smoke test that launches the app, waits for CEF browser creation and s
 
 ```sh
 make smoke-cef
+make smoke-cef-four
 ```
 
 Reset saved app state and Chromium profile data:
