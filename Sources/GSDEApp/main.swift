@@ -582,85 +582,194 @@ final class PaneBoxView: NSView {
 }
 
 @MainActor
-final class PaneRuntimeErrorView: NSView {
-    init(title: String, detail: String) {
-        super.init(frame: .zero)
-        wantsLayer = true
-        layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
-        layer?.cornerRadius = 6
-
-        let titleLabel = NSTextField(labelWithString: title)
-        titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
-        titleLabel.textColor = .labelColor
-        titleLabel.alignment = .center
-
-        let detailLabel = NSTextField(wrappingLabelWithString: detail)
-        detailLabel.font = .systemFont(ofSize: 13)
-        detailLabel.textColor = .secondaryLabelColor
-        detailLabel.alignment = .center
-
-        let stack = NSStackView(views: [titleLabel, detailLabel])
-        stack.orientation = .vertical
-        stack.spacing = 8
-        stack.alignment = .centerX
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-
-        NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            stack.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, multiplier: 0.82)
-        ])
-    }
-
-    required init?(coder: NSCoder) {
-        preconditionFailure("PaneRuntimeErrorView requires a title and detail")
-    }
-}
-
-@MainActor
 final class VSCodePaneView: NSView {
+    static weak var activePane: VSCodePaneView?
+
     private let paneID: String
     private let configSource: WorkspaceConfigSource
     private let codeServerManager: CodeServerManager
+    private let browserContainer = NSView()
+    private let overlayContainer = NSView()
+    private var cefBrowser: OpaquePointer?
+    private weak var cefNativeView: NSView?
+    private var cefStatusTimer: Timer?
+    private var mouseFocusMonitor: Any?
+    private var activePaneObserver: NSObjectProtocol?
     private var startTask: Task<Void, Never>?
     private var startTaskID: UUID?
     private var statusTask: Task<Void, Never>?
     private var stopTask: Task<Void, Never>?
     private var stopGeneration = 0
     private var hasStartedSession = false
-    private var embeddedView: NSView?
+    private var currentServerURL: URL?
+    private var currentCEFCacheDirectory: URL?
+    var drawsActiveAppearance = true
 
     init(paneID: String, configSource: WorkspaceConfigSource, codeServerManager: CodeServerManager) {
         self.paneID = paneID
         self.configSource = configSource
         self.codeServerManager = codeServerManager
         super.init(frame: .zero)
-        showStatus(title: "Starting VS Code…", detail: "Launching code-server for pane \(paneID)")
+        commonInit()
     }
 
     required init?(coder: NSCoder) {
         preconditionFailure("VSCodePaneView requires a pane ID and code-server manager")
     }
 
+    override var acceptsFirstResponder: Bool { true }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window == nil {
-            startTask?.cancel()
-            statusTask?.cancel()
-            startTask = nil
-            startTaskID = nil
-            statusTask = nil
-            hasStartedSession = false
+            tearDownViewLifetimeResources()
             stopGeneration += 1
             stopTask = Task { await codeServerManager.stop(paneID: paneID) }
             return
         }
+        installMouseFocusMonitorIfNeeded()
+        if Self.activePane == nil, BrowserPaneView.activePane == nil, GhosttyHostView.activePane == nil {
+            markActivePane()
+        }
+        if hasStartedSession, cefBrowser == nil {
+            _ = attachBrowserToStartedSessionOrFail()
+        } else {
+            startCodeServerIfNeeded()
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        resizeCEFBrowser()
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        markActivePane()
+        if let cefBrowser {
+            gsde_chromium_browser_focus(cefBrowser, 1)
+        }
+        return true
+    }
+
+    override func resignFirstResponder() -> Bool {
+        if let cefBrowser {
+            gsde_chromium_browser_focus(cefBrowser, 0)
+        }
+        return super.resignFirstResponder()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        markActivePane()
+        window?.makeFirstResponder(self)
+        if let cefBrowser {
+            gsde_chromium_browser_focus(cefBrowser, 1)
+        }
+        super.mouseDown(with: event)
+    }
+
+    private func commonInit() {
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+        browserContainer.translatesAutoresizingMaskIntoConstraints = false
+        overlayContainer.translatesAutoresizingMaskIntoConstraints = false
+        overlayContainer.wantsLayer = true
+        overlayContainer.layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.94).cgColor
+        addSubview(browserContainer)
+        addSubview(overlayContainer)
+        NSLayoutConstraint.activate([
+            browserContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
+            browserContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
+            browserContainer.topAnchor.constraint(equalTo: topAnchor),
+            browserContainer.bottomAnchor.constraint(equalTo: bottomAnchor),
+            overlayContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
+            overlayContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
+            overlayContainer.topAnchor.constraint(equalTo: topAnchor),
+            overlayContainer.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+        installActivePaneObserver()
+        showOverlay(title: "Starting VS Code…", detail: "Launching code-server for pane \(paneID)", retryAction: nil)
         startCodeServerIfNeeded()
+    }
+
+    private func tearDownViewLifetimeResources() {
+        startTask?.cancel()
+        statusTask?.cancel()
+        cefStatusTimer?.invalidate()
+        cefStatusTimer = nil
+        startTask = nil
+        startTaskID = nil
+        statusTask = nil
+        hasStartedSession = false
+        currentServerURL = nil
+        currentCEFCacheDirectory = nil
+        if let mouseFocusMonitor {
+            NSEvent.removeMonitor(mouseFocusMonitor)
+            self.mouseFocusMonitor = nil
+        }
+        if let cefBrowser {
+            gsde_chromium_browser_destroy(cefBrowser)
+            self.cefBrowser = nil
+            cefNativeView = nil
+        }
+    }
+
+    private func installMouseFocusMonitorIfNeeded() {
+        guard mouseFocusMonitor == nil else { return }
+        mouseFocusMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .otherMouseDown]) { [weak self] event in
+            guard let self,
+                  self.window === event.window,
+                  self.isEventInsidePane(event)
+            else { return event }
+            self.markActivePane()
+            self.window?.makeFirstResponder(self)
+            if let cefBrowser = self.cefBrowser {
+                gsde_chromium_browser_focus(cefBrowser, 1)
+            }
+            return event
+        }
+    }
+
+    private func installActivePaneObserver() {
+        activePaneObserver = NotificationCenter.default.addObserver(
+            forName: .gsdeActivePaneDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let activeObjectID = (notification.object as AnyObject?).map(ObjectIdentifier.init)
+            Task { @MainActor in
+                guard let self else { return }
+                self.setActiveAppearance(activeObjectID == ObjectIdentifier(self))
+            }
+        }
+    }
+
+    private func isEventInsidePane(_ event: NSEvent) -> Bool {
+        let screenPoint = NSPoint(x: event.locationInWindow.x, y: event.locationInWindow.y)
+        let localPoint = convert(screenPoint, from: nil)
+        return bounds.contains(localPoint)
+    }
+
+    private func markActivePane() {
+        Self.activePane = self
+        BrowserPaneView.activePane = nil
+        GhosttyHostView.activePane = nil
+        updateWindowTitleForActivePane()
+        NotificationCenter.default.post(name: .gsdeActivePaneDidChange, object: self)
+    }
+
+    private func setActiveAppearance(_ active: Bool) {
+        guard drawsActiveAppearance else {
+            layer?.borderWidth = 0
+            layer?.borderColor = nil
+            return
+        }
+        layer?.borderWidth = active ? 2 : 0
+        layer?.borderColor = active ? NSColor.controlAccentColor.cgColor : nil
     }
 
     private func startCodeServerIfNeeded() {
         guard startTask == nil, !hasStartedSession else { return }
+        showOverlay(title: "Starting VS Code…", detail: "Launching code-server for pane \(paneID)", retryAction: nil)
         let pendingStopTask = stopTask
         let pendingStopGeneration = stopGeneration
         let taskID = UUID()
@@ -680,25 +789,13 @@ final class VSCodePaneView: NSView {
                 try Task.checkCancellation()
                 let shouldStopSession = await MainActor.run { [weak self] in
                     guard let self, startTaskID == taskID else { return false }
-                    guard window != nil else {
-                        startTask = nil
-                        startTaskID = nil
-                        return true
-                    }
+                    currentServerURL = session.serverURL
+                    currentCEFCacheDirectory = session.launchConfiguration.stateDirectories.cefCacheDirectory
                     hasStartedSession = true
-                    embed(BrowserPaneView(
-                        profile: BrowserProfileConfig(
-                            name: "vscode.\(paneID)",
-                            storageDirectory: session.launchConfiguration.stateDirectories.cefCacheDirectory,
-                            persistent: true
-                        ),
-                        stateIdentifier: "vscode.\(paneID)",
-                        initialURL: session.serverURL
-                    ))
-                    beginMonitoringSession()
                     startTask = nil
                     startTaskID = nil
-                    return false
+                    guard window != nil else { return false }
+                    return attachBrowserToStartedSessionOrFail()
                 }
                 if shouldStopSession {
                     await codeServerManager.stop(paneID: paneID)
@@ -716,12 +813,99 @@ final class VSCodePaneView: NSView {
             } catch {
                 await MainActor.run { [weak self] in
                     guard let self, startTaskID == taskID else { return }
-                    showStatus(title: "VS Code pane failed", detail: error.localizedDescription)
+                    showFailure(title: "VS Code pane failed", detail: error.localizedDescription)
                     startTask = nil
                     startTaskID = nil
                 }
             }
         }
+    }
+
+    private func attachBrowserToStartedSessionOrFail() -> Bool {
+        guard let serverURL = currentServerURL, let cacheDirectory = currentCEFCacheDirectory else {
+            showFailure(title: "VS Code pane failed", detail: "code-server session is marked ready without a server URL or CEF cache directory")
+            return true
+        }
+        do {
+            try createCEFBrowser(serverURL: serverURL, cacheDirectory: cacheDirectory)
+            hideOverlay()
+            beginMonitoringSession()
+            return false
+        } catch {
+            showFailure(title: "VS Code browser failed", detail: error.localizedDescription)
+            return true
+        }
+    }
+
+    private func createCEFBrowser(serverURL: URL, cacheDirectory: URL) throws {
+        guard cefBrowser == nil else { return }
+        guard gsde_chromium_cef_available() != 0 else {
+            throw VSCodePaneError.cefUnavailable(String(cString: gsde_chromium_backend_status()))
+        }
+        browserContainer.layoutSubtreeIfNeeded()
+        let width = Int32(max(1, browserContainer.bounds.width))
+        let height = Int32(max(1, browserContainer.bounds.height))
+        let cachePath = cacheDirectory.path
+        let browser = serverURL.absoluteString.withCString { initialURLPointer in
+            cachePath.withCString { cachePathPointer in
+                gsde_chromium_browser_create(
+                    Unmanaged.passUnretained(browserContainer).toOpaque(),
+                    width,
+                    height,
+                    initialURLPointer,
+                    cachePathPointer
+                )
+            }
+        }
+        guard let browser else {
+            throw VSCodePaneError.cefCreateFailed(String(cString: gsde_chromium_last_error()))
+        }
+        cefBrowser = browser
+        attachCEFBrowserViewIfAvailable(browser)
+        startCEFStatusPolling()
+    }
+
+    private func attachCEFBrowserViewIfAvailable(_ browser: OpaquePointer) {
+        guard let rawView = gsde_chromium_browser_view(browser) else { return }
+        let nativeView = Unmanaged<NSView>.fromOpaque(rawView).takeUnretainedValue()
+        if nativeView.superview !== browserContainer {
+            nativeView.removeFromSuperview()
+            browserContainer.addSubview(nativeView)
+        }
+        nativeView.frame = browserContainer.bounds
+        nativeView.autoresizingMask = [.width, .height]
+        cefNativeView = nativeView
+    }
+
+    private func startCEFStatusPolling() {
+        cefStatusTimer?.invalidate()
+        cefStatusTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshCEFState()
+            }
+        }
+        refreshCEFState()
+    }
+
+    private func refreshCEFState() {
+        guard let cefBrowser else { return }
+        attachCEFBrowserViewIfAvailable(cefBrowser)
+        let currentTitle = String(cString: gsde_chromium_browser_title(cefBrowser))
+        if Self.activePane === self, !currentTitle.isEmpty {
+            updateWindowTitleForActivePane(title: currentTitle)
+        }
+        let httpStatus = gsde_chromium_browser_http_status(cefBrowser)
+        if httpStatus < 0 {
+            showFailure(title: "VS Code page failed", detail: "CEF reported load error \(httpStatus) for \(currentServerURL?.absoluteString ?? "the VS Code URL")")
+        }
+    }
+
+    private func resizeCEFBrowser() {
+        guard let cefBrowser else { return }
+        let width = Int32(max(1, browserContainer.bounds.width))
+        let height = Int32(max(1, browserContainer.bounds.height))
+        cefNativeView?.frame = browserContainer.bounds
+        gsde_chromium_browser_resize(cefBrowser, width, height)
     }
 
     private func beginMonitoringSession() {
@@ -742,7 +926,7 @@ final class VSCodePaneView: NSView {
                 await MainActor.run { [weak self] in
                     guard let self, window != nil else { return }
                     statusTask = nil
-                    showStatus(
+                    showFailure(
                         title: "VS Code pane crashed",
                         detail: Self.crashDetail(exitCode: exitCode, diagnostics: diagnostics)
                     )
@@ -757,21 +941,91 @@ final class VSCodePaneView: NSView {
         return "code-server exited with status \(exitCode): \(output)"
     }
 
-    private func embed(_ view: NSView) {
-        embeddedView?.removeFromSuperview()
-        embeddedView = view
-        view.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(view)
+    private func showFailure(title: String, detail: String) {
+        cefStatusTimer?.invalidate()
+        cefStatusTimer = nil
+        if let cefBrowser {
+            gsde_chromium_browser_destroy(cefBrowser)
+            self.cefBrowser = nil
+            cefNativeView = nil
+        }
+        hasStartedSession = false
+        currentServerURL = nil
+        currentCEFCacheDirectory = nil
+        stopGeneration += 1
+        stopTask = Task { await codeServerManager.stop(paneID: paneID) }
+        showOverlay(title: title, detail: detail, retryAction: #selector(retryButtonPressed(_:)))
+    }
+
+    @objc private func retryButtonPressed(_ sender: NSButton) {
+        startCodeServerIfNeeded()
+    }
+
+    private func showOverlay(title: String, detail: String, retryAction: Selector?) {
+        overlayContainer.subviews.forEach { $0.removeFromSuperview() }
+        overlayContainer.isHidden = false
+
+        let titleLabel = NSTextField(labelWithString: title)
+        titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
+        titleLabel.textColor = .labelColor
+        titleLabel.alignment = .center
+
+        let detailLabel = NSTextField(wrappingLabelWithString: detail)
+        detailLabel.font = .systemFont(ofSize: 13)
+        detailLabel.textColor = .secondaryLabelColor
+        detailLabel.alignment = .center
+
+        var arrangedViews: [NSView] = [titleLabel, detailLabel]
+        if let retryAction {
+            let retryButton = NSButton(title: "Retry", target: self, action: retryAction)
+            retryButton.bezelStyle = .rounded
+            arrangedViews.append(retryButton)
+        } else {
+            let progress = NSProgressIndicator()
+            progress.style = .spinning
+            progress.controlSize = .small
+            progress.startAnimation(nil)
+            arrangedViews.append(progress)
+        }
+
+        let stack = NSStackView(views: arrangedViews)
+        stack.orientation = .vertical
+        stack.spacing = 10
+        stack.alignment = .centerX
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        overlayContainer.addSubview(stack)
         NSLayoutConstraint.activate([
-            view.leadingAnchor.constraint(equalTo: leadingAnchor),
-            view.trailingAnchor.constraint(equalTo: trailingAnchor),
-            view.topAnchor.constraint(equalTo: topAnchor),
-            view.bottomAnchor.constraint(equalTo: bottomAnchor)
+            stack.centerXAnchor.constraint(equalTo: overlayContainer.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: overlayContainer.centerYAnchor),
+            stack.widthAnchor.constraint(lessThanOrEqualTo: overlayContainer.widthAnchor, multiplier: 0.82)
         ])
     }
 
-    private func showStatus(title: String, detail: String) {
-        embed(PaneRuntimeErrorView(title: title, detail: detail))
+    private func hideOverlay() {
+        overlayContainer.isHidden = true
+        overlayContainer.subviews.forEach { $0.removeFromSuperview() }
+    }
+
+    private func updateWindowTitleForActivePane(title: String? = nil) {
+        guard Self.activePane === self else { return }
+        let cleanTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !cleanTitle.isEmpty {
+            window?.title = "\(WorkspaceDisplayTitle.title) — \(cleanTitle)"
+        } else {
+            window?.title = "\(WorkspaceDisplayTitle.title) — VS Code"
+        }
+    }
+
+    private enum VSCodePaneError: LocalizedError {
+        case cefUnavailable(String)
+        case cefCreateFailed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .cefUnavailable(let detail): "CEF is unavailable: \(detail)"
+            case .cefCreateFailed(let detail): "CEF browser creation failed: \(detail)"
+            }
+        }
     }
 }
 
@@ -829,6 +1083,8 @@ final class ConfiguredPaneRegistry {
             terminalView.drawsActiveAppearance = false
         } else if let browserView = contentView as? BrowserPaneView {
             browserView.drawsActiveAppearance = false
+        } else if let vscodeView = contentView as? VSCodePaneView {
+            vscodeView.drawsActiveAppearance = false
         }
         return PaneBoxView(contentView: contentView, border: definition.border, padding: definition.padding)
     }
