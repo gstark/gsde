@@ -354,6 +354,14 @@ final class ThreePaneWorkspaceView: NSSplitView {
         arrangedSubviews.count > 1 && activeArrangedPane != nil
     }
 
+    func focusNextPane() {
+        focusPane(offset: 1)
+    }
+
+    func focusPreviousPane() {
+        focusPane(offset: -1)
+    }
+
     func closeActivePane() {
         guard canCloseActivePane, let pane = activeArrangedPane else { return }
         removeArrangedSubview(pane)
@@ -410,6 +418,22 @@ final class ThreePaneWorkspaceView: NSSplitView {
         autosaveName = splitAutosaveName
         for index in 1..<arrangedSubviews.count {
             setPosition(bounds.width * CGFloat(index) / CGFloat(arrangedSubviews.count), ofDividerAt: index - 1)
+        }
+    }
+
+    private func focusPane(offset: Int) {
+        guard !arrangedSubviews.isEmpty else { return }
+        let currentIndex = activeArrangedPane.flatMap { arrangedSubviews.firstIndex(of: $0) } ?? 0
+        let nextIndex = (currentIndex + offset + arrangedSubviews.count) % arrangedSubviews.count
+        let pane = arrangedSubviews[nextIndex]
+        if let browserPane = pane as? BrowserPaneView {
+            window?.makeFirstResponder(browserPane)
+        } else if let terminalPane = pane as? GhosttyHostView {
+            window?.makeFirstResponder(terminalPane)
+        } else if let focusable = pane.subviews.first(where: { $0.acceptsFirstResponder }) {
+            window?.makeFirstResponder(focusable)
+        } else {
+            window?.makeFirstResponder(pane)
         }
     }
 
@@ -568,6 +592,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         addMenuItem("New Terminal Pane", #selector(newTerminalPane(_:)), "n", modifiers: [.command, .shift], to: workspaceMenu)
         addMenuItem("Close Active Pane", #selector(closeActivePane(_:)), "w", to: workspaceMenu)
         workspaceMenu.addItem(.separator())
+        addMenuItem("Focus Next Pane", #selector(focusNextPane(_:)), "}", to: workspaceMenu)
+        addMenuItem("Focus Previous Pane", #selector(focusPreviousPane(_:)), "{", to: workspaceMenu)
+        workspaceMenu.addItem(.separator())
         addMenuItem("Reset Window and Pane Layout", #selector(resetWindowAndPaneLayout(_:)), "", modifiers: [], to: workspaceMenu)
 
         let browserMenuItem = NSMenuItem()
@@ -629,6 +656,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc private func closeActivePane(_ sender: Any?) {
         (window?.contentView as? ThreePaneWorkspaceView)?.closeActivePane()
+    }
+
+    @objc private func focusNextPane(_ sender: Any?) {
+        (window?.contentView as? ThreePaneWorkspaceView)?.focusNextPane()
+    }
+
+    @objc private func focusPreviousPane(_ sender: Any?) {
+        (window?.contentView as? ThreePaneWorkspaceView)?.focusPreviousPane()
     }
 
     @objc private func resetWindowAndPaneLayout(_ sender: Any?) {
