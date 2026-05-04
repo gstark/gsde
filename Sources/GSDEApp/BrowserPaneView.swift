@@ -40,6 +40,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     private weak var cefNativeView: NSView?
     private var cefStatusTimer: Timer?
     private var keyCommandMonitor: Any?
+    private var cefMouseFocusMonitor: Any?
     private var contextMenuMonitor: Any?
     private var webKitPageZoom: CGFloat = 1.0
     private var hasStartedWebKitFallbackLoad = false
@@ -96,6 +97,10 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
                 NSEvent.removeMonitor(keyCommandMonitor)
                 self.keyCommandMonitor = nil
             }
+            if let cefMouseFocusMonitor {
+                NSEvent.removeMonitor(cefMouseFocusMonitor)
+                self.cefMouseFocusMonitor = nil
+            }
             if let contextMenuMonitor {
                 NSEvent.removeMonitor(contextMenuMonitor)
                 self.contextMenuMonitor = nil
@@ -108,6 +113,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         }
 
         installKeyCommandMonitorIfNeeded()
+        installCEFMouseFocusMonitorIfNeeded()
         installContextMenuMonitorIfNeeded()
         createCEFBrowserIfPossible()
         if Self.activePane == nil {
@@ -165,6 +171,18 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         }
     }
 
+    private func installCEFMouseFocusMonitorIfNeeded() {
+        guard cefMouseFocusMonitor == nil else { return }
+        cefMouseFocusMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .otherMouseDown]) { [weak self] event in
+            guard let self,
+                  self.window === event.window,
+                  self.isEventInsideCEFView(event)
+            else { return event }
+            self.activateCEFBrowserPane()
+            return event
+        }
+    }
+
     private func installContextMenuMonitorIfNeeded() {
         guard contextMenuMonitor == nil else { return }
         contextMenuMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in
@@ -187,9 +205,21 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     }
 
     private func shouldHandleCEFContextMenu(_ event: NSEvent) -> Bool {
-        guard cefBrowser != nil, let cefNativeView else { return false }
+        cefBrowser != nil && isEventInsideCEFView(event)
+    }
+
+    private func isEventInsideCEFView(_ event: NSEvent) -> Bool {
+        guard let cefNativeView else { return false }
         let point = cefNativeView.convert(event.locationInWindow, from: nil)
         return cefNativeView.bounds.contains(point)
+    }
+
+    private func activateCEFBrowserPane() {
+        Self.activePane = self
+        window?.makeFirstResponder(self)
+        if let cefBrowser {
+            gsde_chromium_browser_focus(cefBrowser, 1)
+        }
     }
 
     private var shouldHandleEditingShortcutInBrowserContent: Bool {
@@ -204,11 +234,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     }
 
     private func showCEFContextMenu(for event: NSEvent) {
-        Self.activePane = self
-        window?.makeFirstResponder(self)
-        if let cefBrowser {
-            gsde_chromium_browser_focus(cefBrowser, 1)
-        }
+        activateCEFBrowserPane()
 
         let menu = NSMenu(title: "Browser")
         let backItem = NSMenuItem(title: "Back", action: #selector(goBack), keyEquivalent: "")
