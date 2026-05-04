@@ -325,6 +325,7 @@ final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
     private func markActivePane() {
         Self.activePane = self
         BrowserPaneView.activePane = nil
+        VSCodePaneView.activePane = nil
         updateWindowTitleIfActive()
         NotificationCenter.default.post(name: .gsdeActivePaneDidChange, object: self)
     }
@@ -1194,6 +1195,11 @@ final class MosaicWorkspaceView: NSView {
            terminalPane.window != nil {
             return terminalPane
         }
+        if let vscodePane = VSCodePaneView.activePane,
+           !vscodePane.isHidden,
+           vscodePane.window != nil {
+            return vscodePane
+        }
         return nil
     }
 
@@ -1202,6 +1208,8 @@ final class MosaicWorkspaceView: NSView {
             window?.makeFirstResponder(browserPane)
         } else if let terminalPane = pane as? GhosttyHostView {
             window?.makeFirstResponder(terminalPane)
+        } else if let vscodePane = pane as? VSCodePaneView {
+            window?.makeFirstResponder(vscodePane)
         } else if let focusable = pane.subviews.first(where: { $0.acceptsFirstResponder }) {
             window?.makeFirstResponder(focusable)
         } else {
@@ -1611,6 +1619,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
         removePane(pane)
         BrowserPaneView.activePane = nil
         GhosttyHostView.activePane = nil
+        VSCodePaneView.activePane = nil
         persistPaneLayout()
         distributePanesEvenly()
     }
@@ -1626,6 +1635,8 @@ final class ThreePaneWorkspaceView: NSSplitView {
             window?.makeFirstResponder(browserPane)
         } else if let terminalPane = activePane as? GhosttyHostView {
             window?.makeFirstResponder(terminalPane)
+        } else if let vscodePane = activePane as? VSCodePaneView {
+            window?.makeFirstResponder(vscodePane)
         }
     }
 
@@ -1709,6 +1720,8 @@ final class ThreePaneWorkspaceView: NSSplitView {
             window?.makeFirstResponder(browserPane)
         } else if let terminalPane = pane as? GhosttyHostView {
             window?.makeFirstResponder(terminalPane)
+        } else if let vscodePane = pane as? VSCodePaneView {
+            window?.makeFirstResponder(vscodePane)
         } else if let focusable = pane.subviews.first(where: { $0.acceptsFirstResponder }) {
             window?.makeFirstResponder(focusable)
         } else {
@@ -1724,6 +1737,10 @@ final class ThreePaneWorkspaceView: NSSplitView {
         if let terminalPane = GhosttyHostView.activePane,
            arrangedSubviews.contains(where: { terminalPane.isDescendant(of: $0) }) {
             return arrangedSubviews.first { terminalPane.isDescendant(of: $0) }
+        }
+        if let vscodePane = VSCodePaneView.activePane,
+           arrangedSubviews.contains(where: { vscodePane.isDescendant(of: $0) }) {
+            return arrangedSubviews.first { vscodePane.isDescendant(of: $0) }
         }
         guard let responder = window?.firstResponder as? NSView else { return arrangedSubviews.last }
         return arrangedSubviews.first { responder === $0 || responder.isDescendant(of: $0) } ?? arrangedSubviews.last

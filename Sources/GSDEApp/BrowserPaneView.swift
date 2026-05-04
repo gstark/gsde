@@ -105,7 +105,7 @@ final class BrowserPaneView: NSView {
         installCEFMouseFocusMonitorIfNeeded()
         installContextMenuMonitorIfNeeded()
         createCEFBrowserIfPossible()
-        if Self.activePane == nil, GhosttyHostView.activePane == nil {
+        if Self.activePane == nil, GhosttyHostView.activePane == nil, VSCodePaneView.activePane == nil {
             Self.activePane = self
         }
         if window?.firstResponder == nil {
@@ -394,6 +394,7 @@ final class BrowserPaneView: NSView {
     private func markActivePane() {
         Self.activePane = self
         GhosttyHostView.activePane = nil
+        VSCodePaneView.activePane = nil
         updateWindowTitleForActivePane()
         NotificationCenter.default.post(name: .gsdeActivePaneDidChange, object: self)
     }
