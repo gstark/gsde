@@ -333,6 +333,15 @@ final class ThreePaneWorkspaceView: NSSplitView {
     }
 
     func addBrowserPane() {
+        addBrowserPane(initialURL: URL(string: "https://example.com")!, after: activeArrangedPane)
+    }
+
+    func duplicateActiveBrowserPane() {
+        guard let browserPane = BrowserPaneView.activePane else { return }
+        addBrowserPane(initialURL: browserPane.currentURLForWorkspaceDuplication, after: activeArrangedPane)
+    }
+
+    private func addBrowserPane(initialURL: URL, after existingPane: NSView?) {
         let stateIdentifier = nextDynamicBrowserIdentifier()
         let profile = BrowserProfileConfig(
             name: stateIdentifier,
@@ -343,8 +352,8 @@ final class ThreePaneWorkspaceView: NSSplitView {
             persistent: true
         )
         addPane(
-            BrowserPaneView(profile: profile, stateIdentifier: stateIdentifier, initialURL: URL(string: "https://example.com")!),
-            after: activeArrangedPane
+            BrowserPaneView(profile: profile, stateIdentifier: stateIdentifier, initialURL: initialURL),
+            after: existingPane
         )
         persistPaneLayout()
         distributePanesEvenly()
@@ -618,6 +627,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         workspaceMenuItem.submenu = workspaceMenu
         addMenuItem("New Browser Pane", #selector(newBrowserPane(_:)), "n", to: workspaceMenu)
         addMenuItem("New Terminal Pane", #selector(newTerminalPane(_:)), "n", modifiers: [.command, .shift], to: workspaceMenu)
+        addMenuItem("Duplicate Active Browser Pane", #selector(duplicateActiveBrowserPane(_:)), "d", modifiers: [.command, .shift], to: workspaceMenu)
         addMenuItem("Close Active Pane", #selector(closeActivePane(_:)), "w", to: workspaceMenu)
         workspaceMenu.addItem(.separator())
         addMenuItem("Focus Next Pane", #selector(focusNextPane(_:)), "}", to: workspaceMenu)
@@ -684,6 +694,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         (window?.contentView as? ThreePaneWorkspaceView)?.addTerminalPane()
     }
 
+    @objc private func duplicateActiveBrowserPane(_ sender: Any?) {
+        (window?.contentView as? ThreePaneWorkspaceView)?.duplicateActiveBrowserPane()
+    }
+
     @objc private func closeActivePane(_ sender: Any?) {
         (window?.contentView as? ThreePaneWorkspaceView)?.closeActivePane()
     }
@@ -723,6 +737,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         switch menuItem.action {
         case #selector(closeActivePane(_:)):
             return (window?.contentView as? ThreePaneWorkspaceView)?.canCloseActivePane ?? false
+        case #selector(duplicateActiveBrowserPane(_:)):
+            return activeBrowserPane != nil
         case #selector(browserFocusLocation(_:)),
              #selector(browserOpenFind(_:)),
              #selector(browserFindNext(_:)),
