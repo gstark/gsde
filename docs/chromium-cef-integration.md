@@ -36,7 +36,7 @@ GSDE Helper (Plugin).app
 GSDE Helper (Renderer).app
 ```
 
-The bridge currently exposes CEF initialization, message loop work, helper process execution, browser creation, native view attachment, navigation, resizing, load/display diagnostics, same-pane popup handling, safe context-menu interception, deterministic permission/auth/certificate cancellation with status logging, basic download handling with status display, edit commands, find with match count status, zoom, print, view source, focus, DevTools entry points, and graceful browser close/shutdown tracking. CEF initializes by default during normal app launch.
+The bridge is implemented as an Objective-C++/C++-compiled shim (`ChromiumStub.mm`) with a C ABI consumed by Swift. It exposes CEF initialization, message loop work, helper process execution, browser creation, native view attachment, navigation, resizing, load/display diagnostics, same-pane popup handling, safe context-menu interception, deterministic permission/auth/certificate cancellation with status logging, basic download handling with status display, edit commands, find with match count status, zoom, print, view source, focus, DevTools entry points, and graceful browser close/shutdown tracking. CEF initializes by default during normal app launch.
 
 Current verified CEF paths:
 
@@ -52,9 +52,9 @@ make verify-cef          # CEF bundle checks plus all CEF smoke tests
 make verify              # default smoke plus all CEF verification
 ```
 
-## Desired CEF bridge
+## CEF bridge API
 
-Swift should not talk to CEF C++ directly. We should add a small Objective-C++/C bridge with this shape:
+Swift does not talk to CEF directly. It calls a small Objective-C++/C bridge with this shape:
 
 ```c
 bool gsde_cef_initialize(const char *root_cache_path, const char *subprocess_path);

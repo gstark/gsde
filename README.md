@@ -50,7 +50,7 @@ Fetch the macOS arm64 CEF distribution:
 make cef
 ```
 
-This places CEF under `external/cef`. See `docs/chromium-cef-integration.md` for the bridge and packaging plan. The CEF backend is opt-in while it is being hardened:
+This places CEF under `external/cef`. See `docs/chromium-cef-integration.md` for the bridge and packaging plan. CEF is the default browser backend:
 
 ```sh
 make run-cef

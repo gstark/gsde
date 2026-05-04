@@ -22,6 +22,10 @@ let package = Package(
             cSettings: [
                 .define("CEF_API_VERSION", to: "14700"),
                 .unsafeFlags(["-I", "external/cef"])
+            ],
+            cxxSettings: [
+                .define("CEF_API_VERSION", to: "14700"),
+                .unsafeFlags(["-I", "external/cef"])
             ]
         ),
         .executableTarget(

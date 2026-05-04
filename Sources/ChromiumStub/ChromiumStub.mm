@@ -2,7 +2,12 @@
 
 #include <dlfcn.h>
 #include <stdbool.h>
-#include <stdatomic.h>
+typedef int atomic_int;
+static inline int atomic_load(const atomic_int *value) { return *value; }
+static inline int atomic_fetch_add(atomic_int *value, int increment) { int previous = *value; *value += increment; return previous; }
+static inline int atomic_fetch_sub(atomic_int *value, int decrement) { int previous = *value; *value -= decrement; return previous; }
+static inline void atomic_store(atomic_int *value, int desired) { *value = desired; }
+static inline void atomic_init(atomic_int *value, int desired) { *value = desired; }
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -168,7 +173,8 @@ int gsde_chromium_initialize(const char *root_cache_path, const char *cache_path
     if (initialized) return 1;
     if (!load_cef_framework()) return 0;
 
-    char *argv[] = { "GSDE" };
+    char program_name[] = "GSDE";
+    char *argv[] = { program_name };
     cef_main_args_t args = { .argc = 1, .argv = argv };
     cef_settings_t settings;
     memset(&settings, 0, sizeof(settings));
@@ -1015,7 +1021,7 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     }
     gsde_log("creating CEF browser");
 
-    gsde_chromium_browser_t *browser = calloc(1, sizeof(gsde_chromium_browser_t));
+    gsde_chromium_browser_t *browser = (gsde_chromium_browser_t *)calloc(1, sizeof(gsde_chromium_browser_t));
     if (!browser) return NULL;
     atomic_init(&browser->ref_count, 1);
     browser->browser_id = atomic_fetch_add(&next_browser_id, 1);
