@@ -239,6 +239,36 @@ int gsde_chromium_live_browser_count(void) {
 
 #if GSDE_HAVE_CEF_HEADERS
 struct gsde_chromium_browser {
+    gsde_chromium_browser()
+        : client{},
+          life_span_handler{},
+          load_handler{},
+          display_handler{},
+          context_menu_handler{},
+          download_handler{},
+          find_handler{},
+          permission_handler{},
+          request_handler{},
+          ref_count{1},
+          browser(nullptr),
+          view(nullptr),
+          request_context(nullptr),
+          browser_id(0),
+          current_url{},
+          title{},
+          status_message{},
+          is_loading(0),
+          http_status(0),
+          loading_progress(0.0),
+          destroy_requested(0) {}
+
+    ~gsde_chromium_browser() {
+        if (request_context && request_context->base.base.release) {
+            request_context->base.base.release((cef_base_ref_counted_t *)request_context);
+            request_context = nullptr;
+        }
+    }
+
     cef_client_t client;
     cef_life_span_handler_t life_span_handler;
     cef_load_handler_t load_handler;
@@ -533,12 +563,7 @@ static int CEF_CALLBACK gsde_do_close(cef_life_span_handler_t *self, cef_browser
 }
 
 static void free_chromium_browser(gsde_chromium_browser_t *browser) {
-    if (!browser) return;
-    if (browser->request_context && browser->request_context->base.base.release) {
-        browser->request_context->base.base.release((cef_base_ref_counted_t *)browser->request_context);
-        browser->request_context = NULL;
-    }
-    free(browser);
+    delete browser;
 }
 
 static void CEF_CALLBACK gsde_on_before_close(cef_life_span_handler_t *self, cef_browser_t *cef_browser) {
@@ -1014,22 +1039,7 @@ static cef_app_t *gsde_cef_app(void) {
     }
     return &global_cef_app;
 }
-#endif
-
-gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int width, int height, const char *initial_url, const char *cache_path) {
-#if GSDE_HAVE_CEF_HEADERS
-    if (!initialized || !parent_nsview) {
-        set_last_error(!initialized ? "CEF browser create skipped: CEF is not initialized" : "CEF browser create skipped: parent NSView is null");
-        return NULL;
-    }
-    gsde_log("creating CEF browser");
-
-    gsde_chromium_browser_t *browser = (gsde_chromium_browser_t *)calloc(1, sizeof(gsde_chromium_browser_t));
-    if (!browser) return NULL;
-    atomic_init(&browser->ref_count, 1);
-    browser->browser_id = atomic_fetch_add(&next_browser_id, 1);
-    snprintf(browser->current_url, sizeof(browser->current_url), "%s", initial_url ? initial_url : "about:blank");
-
+static void configure_browser_handlers(gsde_chromium_browser_t *browser) {
     setup_client_base(&browser->client.base, sizeof(browser->client));
     setup_life_span_base(&browser->life_span_handler.base, sizeof(browser->life_span_handler));
     setup_load_base(&browser->load_handler.base, sizeof(browser->load_handler));
@@ -1039,6 +1049,7 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     setup_find_base(&browser->find_handler.base, sizeof(browser->find_handler));
     setup_permission_base(&browser->permission_handler.base, sizeof(browser->permission_handler));
     setup_request_base(&browser->request_handler.base, sizeof(browser->request_handler));
+
     browser->client.get_life_span_handler = gsde_get_life_span_handler;
     browser->client.get_load_handler = gsde_get_load_handler;
     browser->client.get_display_handler = gsde_get_display_handler;
@@ -1070,6 +1081,22 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     browser->permission_handler.on_dismiss_permission_prompt = gsde_on_dismiss_permission_prompt;
     browser->request_handler.get_auth_credentials = gsde_get_auth_credentials;
     browser->request_handler.on_certificate_error = gsde_on_certificate_error;
+}
+#endif
+
+gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int width, int height, const char *initial_url, const char *cache_path) {
+#if GSDE_HAVE_CEF_HEADERS
+    if (!initialized || !parent_nsview) {
+        set_last_error(!initialized ? "CEF browser create skipped: CEF is not initialized" : "CEF browser create skipped: parent NSView is null");
+        return NULL;
+    }
+    gsde_log("creating CEF browser");
+
+    gsde_chromium_browser_t *browser = new (std::nothrow) gsde_chromium_browser_t();
+    if (!browser) return NULL;
+    browser->browser_id = atomic_fetch_add(&next_browser_id, 1);
+    snprintf(browser->current_url, sizeof(browser->current_url), "%s", initial_url ? initial_url : "about:blank");
+    configure_browser_handlers(browser);
 
     if (cache_path && cache_path[0] != '\0') {
         cef_request_context_settings_t context_settings;
