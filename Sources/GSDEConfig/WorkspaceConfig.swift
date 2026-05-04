@@ -11,6 +11,7 @@ public struct WorkspaceConfig: Equatable, Sendable {
     public let startupLayout: String
     public let layoutFlashEnabled: Bool
     public let layoutFlashDuration: Double
+    public let paneKindDefaults: [PaneDefinition.Kind: PaneBoxStyle]
 
     public init(
         version: Int,
@@ -19,7 +20,8 @@ public struct WorkspaceConfig: Equatable, Sendable {
         validatedLayouts: [ValidatedMosaicLayout],
         startupLayout: String,
         layoutFlashEnabled: Bool = true,
-        layoutFlashDuration: Double = 1.4
+        layoutFlashDuration: Double = 1.4,
+        paneKindDefaults: [PaneDefinition.Kind: PaneBoxStyle] = [:]
     ) {
         self.version = version
         self.panes = panes
@@ -28,6 +30,7 @@ public struct WorkspaceConfig: Equatable, Sendable {
         self.startupLayout = startupLayout
         self.layoutFlashEnabled = layoutFlashEnabled
         self.layoutFlashDuration = layoutFlashDuration
+        self.paneKindDefaults = paneKindDefaults
     }
 
     public static let builtIn = WorkspaceConfig(
@@ -67,7 +70,8 @@ public struct WorkspaceConfig: Equatable, Sendable {
         ],
         startupLayout: "default",
         layoutFlashEnabled: true,
-        layoutFlashDuration: 1.4
+        layoutFlashDuration: 1.4,
+        paneKindDefaults: [:]
     )
 
     public var startupMosaicLayout: ValidatedMosaicLayout? {
@@ -79,6 +83,38 @@ public struct WorkspaceConfig: Equatable, Sendable {
         return layout.slots.map { slot in
             panes.first(where: { $0.id == slot.paneID })!
         }
+    }
+}
+
+public struct PaneBoxEdges: Equatable, Sendable {
+    public let top: Double
+    public let right: Double
+    public let bottom: Double
+    public let left: Double
+
+    public static let zero = PaneBoxEdges(top: 0, right: 0, bottom: 0, left: 0)
+
+    public init(top: Double, right: Double, bottom: Double, left: Double) {
+        self.top = top
+        self.right = right
+        self.bottom = bottom
+        self.left = left
+    }
+
+    public var isZero: Bool {
+        top == 0 && right == 0 && bottom == 0 && left == 0
+    }
+}
+
+public struct PaneBoxStyle: Equatable, Sendable {
+    public let border: PaneBoxEdges
+    public let padding: PaneBoxEdges
+
+    public static let zero = PaneBoxStyle(border: .zero, padding: .zero)
+
+    public init(border: PaneBoxEdges = .zero, padding: PaneBoxEdges = .zero) {
+        self.border = border
+        self.padding = padding
     }
 }
 
@@ -96,6 +132,8 @@ public struct PaneDefinition: Equatable, Sendable {
     public let procfile: String?
     public let process: String?
     public let startupCommand: String?
+    public let border: PaneBoxEdges
+    public let padding: PaneBoxEdges
 
     public init(
         id: String,
@@ -105,7 +143,9 @@ public struct PaneDefinition: Equatable, Sendable {
         command: String? = nil,
         procfile: String? = nil,
         process: String? = nil,
-        startupCommand: String? = nil
+        startupCommand: String? = nil,
+        border: PaneBoxEdges = .zero,
+        padding: PaneBoxEdges = .zero
     ) {
         self.id = id
         self.kind = kind
@@ -115,6 +155,8 @@ public struct PaneDefinition: Equatable, Sendable {
         self.procfile = procfile
         self.process = process
         self.startupCommand = startupCommand ?? command
+        self.border = border
+        self.padding = padding
     }
 }
 
@@ -331,7 +373,9 @@ public final class WorkspaceConfigLoader {
                 command: pane.command,
                 procfile: pane.procfile,
                 process: pane.process,
-                startupCommand: "cd \(Self.shellQuote(projectRoot.path)) && \(command)"
+                startupCommand: "cd \(Self.shellQuote(projectRoot.path)) && \(command)",
+                border: pane.border,
+                padding: pane.padding
             )
         }
 
@@ -342,7 +386,8 @@ public final class WorkspaceConfigLoader {
             validatedLayouts: config.validatedLayouts,
             startupLayout: config.startupLayout,
             layoutFlashEnabled: config.layoutFlashEnabled,
-            layoutFlashDuration: config.layoutFlashDuration
+            layoutFlashDuration: config.layoutFlashDuration,
+            paneKindDefaults: config.paneKindDefaults
         )
     }
 
@@ -408,6 +453,7 @@ enum WorkspaceConfigParseError: Error, Equatable, CustomStringConvertible {
 struct WorkspaceConfigTOMLParser {
     private enum Table {
         case root
+        case paneDefault(PaneDefinition.Kind)
         case pane(Int)
         case layout(Int)
     }
@@ -420,6 +466,7 @@ struct WorkspaceConfigTOMLParser {
 
     func parse() throws -> WorkspaceConfig {
         var root: [String: String] = [:]
+        var paneDefaultTables: [PaneDefinition.Kind: [String: String]] = [:]
         var paneTables: [[String: String]] = []
         var layoutTables: [[String: String]] = []
         var table = Table.root
@@ -434,6 +481,12 @@ struct WorkspaceConfigTOMLParser {
                 case "panes":
                     paneTables.append([:])
                     table = .pane(paneTables.count - 1)
+                case "pane_defaults.terminal":
+                    paneDefaultTables[.terminal] = paneDefaultTables[.terminal] ?? [:]
+                    table = .paneDefault(.terminal)
+                case "pane_defaults.browser":
+                    paneDefaultTables[.browser] = paneDefaultTables[.browser] ?? [:]
+                    table = .paneDefault(.browser)
                 case "layouts":
                     layoutTables.append([:])
                     table = .layout(layoutTables.count - 1)
@@ -455,8 +508,12 @@ struct WorkspaceConfigTOMLParser {
             switch table {
             case .root:
                 try insert(key: String(key), value: String(value), into: &root, line: lineNumber, table: "root", allowedKeys: ["version", "startup_layout", "layout_flash_enabled", "layout_flash_duration"])
+            case .paneDefault(let kind):
+                var fields = paneDefaultTables[kind] ?? [:]
+                try insert(key: String(key), value: String(value), into: &fields, line: lineNumber, table: "pane_defaults.\(kind.rawValue)", allowedKeys: ["border", "padding"])
+                paneDefaultTables[kind] = fields
             case .pane(let index):
-                try insert(key: String(key), value: String(value), into: &paneTables[index], line: lineNumber, table: "panes[\(index)]", allowedKeys: ["id", "kind", "url", "profile", "command", "procfile", "process"])
+                try insert(key: String(key), value: String(value), into: &paneTables[index], line: lineNumber, table: "panes[\(index)]", allowedKeys: ["id", "kind", "url", "profile", "command", "procfile", "process", "border", "padding"])
             case .layout(let index):
                 try insert(key: String(key), value: String(value), into: &layoutTables[index], line: lineNumber, table: "layouts[\(index)]", allowedKeys: ["id", "areas"])
             }
@@ -465,8 +522,15 @@ struct WorkspaceConfigTOMLParser {
         let version = try requiredInt(root["version"], table: "root", field: "version")
         guard version == WorkspaceConfig.currentVersion else { throw WorkspaceConfigParseError.unsupportedVersion(version) }
 
+        let paneKindDefaults = try paneDefaultTables.mapValues { fields in
+            try parsePaneBoxStyle(fields, table: "pane_defaults")
+        }
         let panes = try paneTables.enumerated().map { index, fields in
-            try parsePane(fields, index: index)
+            let rawKind = try requiredString(fields["kind"], table: "panes[\(index)]", field: "kind")
+            guard let kind = PaneDefinition.Kind(rawValue: rawKind) else {
+                throw WorkspaceConfigParseError.invalidValue(field: "panes[\(index)].kind", value: rawKind)
+            }
+            return try parsePane(fields, index: index, defaults: paneKindDefaults[kind] ?? .zero)
         }
         let layouts = try layoutTables.enumerated().map { index, fields in
             try parseLayout(fields, index: index)
@@ -486,11 +550,12 @@ struct WorkspaceConfigTOMLParser {
             validatedLayouts: validatedLayouts,
             startupLayout: startupLayout,
             layoutFlashEnabled: layoutFlashEnabled,
-            layoutFlashDuration: layoutFlashDuration
+            layoutFlashDuration: layoutFlashDuration,
+            paneKindDefaults: paneKindDefaults
         )
     }
 
-    private func parsePane(_ fields: [String: String], index: Int) throws -> PaneDefinition {
+    private func parsePane(_ fields: [String: String], index: Int, defaults: PaneBoxStyle = .zero) throws -> PaneDefinition {
         let table = "panes[\(index)]"
         let id = try requiredString(fields["id"], table: table, field: "id")
         let rawKind = try requiredString(fields["kind"], table: table, field: "kind")
@@ -502,6 +567,8 @@ struct WorkspaceConfigTOMLParser {
         let command = try parseString(fields["command"], field: "\(table).command")
         let procfile = try parseString(fields["procfile"], field: "\(table).procfile")
         let process = try parseString(fields["process"], field: "\(table).process")
+        let border = try parseBoxEdges(fields["border"], field: "\(table).border") ?? defaults.border
+        let padding = try parseBoxEdges(fields["padding"], field: "\(table).padding") ?? defaults.padding
         if let profile, profile.isEmpty {
             throw WorkspaceConfigParseError.invalidValue(field: "\(table).profile", value: profile)
         }
@@ -548,7 +615,17 @@ struct WorkspaceConfigTOMLParser {
                 throw WorkspaceConfigParseError.invalidValue(field: "\(table).process", value: "browser panes cannot define process")
             }
         }
-        return PaneDefinition(id: id, kind: kind, url: url, profile: profile, command: command, procfile: procfile, process: process)
+        return PaneDefinition(
+            id: id,
+            kind: kind,
+            url: url,
+            profile: profile,
+            command: command,
+            procfile: procfile,
+            process: process,
+            border: border,
+            padding: padding
+        )
     }
 
     private func parseLayout(_ fields: [String: String], index: Int) throws -> LayoutDefinition {
@@ -711,6 +788,40 @@ struct WorkspaceConfigTOMLParser {
         case "true": return true
         case "false": return false
         default: throw WorkspaceConfigParseError.invalidValue(field: field, value: value)
+        }
+    }
+
+    private func parsePaneBoxStyle(_ fields: [String: String], table: String) throws -> PaneBoxStyle {
+        PaneBoxStyle(
+            border: try parseBoxEdges(fields["border"], field: "\(table).border") ?? .zero,
+            padding: try parseBoxEdges(fields["padding"], field: "\(table).padding") ?? .zero
+        )
+    }
+
+    private func parseBoxEdges(_ value: String?, field: String) throws -> PaneBoxEdges? {
+        guard let raw = try parseString(value, field: field) else { return nil }
+        let parts = raw.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        guard (1...4).contains(parts.count) else {
+            throw WorkspaceConfigParseError.invalidValue(field: field, value: raw)
+        }
+        let values = try parts.map { part in
+            let numberText = part.hasSuffix("px") ? String(part.dropLast(2)) : part
+            guard let value = Double(numberText), value.isFinite, value >= 0 else {
+                throw WorkspaceConfigParseError.invalidValue(field: field, value: raw)
+            }
+            return value
+        }
+        switch values.count {
+        case 1:
+            return PaneBoxEdges(top: values[0], right: values[0], bottom: values[0], left: values[0])
+        case 2:
+            return PaneBoxEdges(top: values[0], right: values[1], bottom: values[0], left: values[1])
+        case 3:
+            return PaneBoxEdges(top: values[0], right: values[1], bottom: values[2], left: values[1])
+        case 4:
+            return PaneBoxEdges(top: values[0], right: values[1], bottom: values[2], left: values[3])
+        default:
+            preconditionFailure("validated CSS box shorthand must have 1-4 values")
         }
     }
 

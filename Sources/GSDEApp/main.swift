@@ -11,6 +11,7 @@ final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
     private var statusLabel: NSTextField?
     private var displayLink: Timer?
     private var activePaneObserver: NSObjectProtocol?
+    var drawsActiveAppearance = true
     private var markedText = ""
     private let startupCommand: String?
     private var handledTextInput = false
@@ -336,6 +337,11 @@ final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
     }
 
     private func setActiveAppearance(_ active: Bool) {
+        guard drawsActiveAppearance else {
+            layer?.borderWidth = 0
+            layer?.borderColor = nil
+            return
+        }
         layer?.borderWidth = active ? 2 : 0
         layer?.borderColor = active ? NSColor.controlAccentColor.cgColor : nil
     }
@@ -475,6 +481,105 @@ final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
 }
 
 @MainActor
+final class PaneBoxView: NSView {
+    let contentView: NSView
+    let configuredBorder: PaneBoxEdges
+    let padding: PaneBoxEdges
+    private var displayBorder: PaneBoxEdges
+    private var activePaneObserver: NSObjectProtocol?
+    private var active = false
+
+    init(contentView: NSView, border: PaneBoxEdges, padding: PaneBoxEdges) {
+        self.contentView = contentView
+        self.configuredBorder = border
+        self.displayBorder = border
+        self.padding = padding
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.cgColor
+        addSubview(contentView)
+        installActivePaneObserver()
+    }
+
+    required init?(coder: NSCoder) {
+        preconditionFailure("PaneBoxView requires a content view")
+    }
+
+    override var acceptsFirstResponder: Bool { false }
+
+    func setDisplayBorder(_ border: PaneBoxEdges) {
+        guard displayBorder != border else { return }
+        displayBorder = border
+        needsDisplay = true
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        let top = CGFloat(configuredBorder.top + padding.top)
+        let right = CGFloat(configuredBorder.right + padding.right)
+        let bottom = CGFloat(configuredBorder.bottom + padding.bottom)
+        let left = CGFloat(configuredBorder.left + padding.left)
+        contentView.frame = NSRect(
+            x: bounds.minX + left,
+            y: bounds.minY + bottom,
+            width: max(1, bounds.width - left - right),
+            height: max(1, bounds.height - top - bottom)
+        )
+    }
+
+    private func installActivePaneObserver() {
+        activePaneObserver = NotificationCenter.default.addObserver(
+            forName: .gsdeActivePaneDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self else { return }
+            let activeView = notification.object as? NSView
+            let isActive = activeView === self.contentView || activeView?.isDescendant(of: self.contentView) == true
+            if self.active != isActive {
+                self.active = isActive
+                self.needsDisplay = true
+            }
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        NSColor.separatorColor.setFill()
+        drawBorderLine(edge: .minY, thickness: CGFloat(displayBorder.top))
+        drawBorderLine(edge: .maxX, thickness: CGFloat(displayBorder.right))
+        drawBorderLine(edge: .maxY, thickness: CGFloat(displayBorder.bottom))
+        drawBorderLine(edge: .minX, thickness: CGFloat(displayBorder.left))
+
+        if active {
+            NSColor.controlAccentColor.setStroke()
+            let path = NSBezierPath(rect: bounds.insetBy(dx: 1, dy: 1))
+            path.lineWidth = 2
+            path.stroke()
+        }
+    }
+
+    private enum BorderEdge { case minX, maxX, minY, maxY }
+
+    private func drawBorderLine(edge: BorderEdge, thickness: CGFloat) {
+        guard thickness > 0 else { return }
+        let rect: NSRect
+        switch edge {
+        case .minX:
+            rect = NSRect(x: bounds.minX, y: bounds.minY, width: thickness, height: bounds.height)
+        case .maxX:
+            rect = NSRect(x: bounds.maxX - thickness, y: bounds.minY, width: thickness, height: bounds.height)
+        case .minY:
+            rect = NSRect(x: bounds.minX, y: bounds.maxY - thickness, width: bounds.width, height: thickness)
+        case .maxY:
+            rect = NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: thickness)
+        }
+        rect.fill()
+    }
+}
+
+@MainActor
 final class ConfiguredPaneRegistry {
     private let definitionsByID: [String: PaneDefinition]
     private var viewsByPaneID: [String: NSView] = [:]
@@ -502,9 +607,10 @@ final class ConfiguredPaneRegistry {
     }
 
     private func makeView(for definition: PaneDefinition) -> NSView {
+        let contentView: NSView
         switch definition.kind {
         case .terminal:
-            return GhosttyHostView(startupCommand: definition.startupCommand)
+            contentView = GhosttyHostView(startupCommand: definition.startupCommand)
         case .browser:
             guard let url = definition.url else {
                 preconditionFailure("Validated browser pane \(definition.id) is missing its URL")
@@ -514,8 +620,16 @@ final class ConfiguredPaneRegistry {
                 storageDirectory: nil,
                 persistent: false
             )
-            return BrowserPaneView(profile: profile, stateIdentifier: definition.id, initialURL: url)
+            contentView = BrowserPaneView(profile: profile, stateIdentifier: definition.id, initialURL: url)
         }
+
+        guard !definition.border.isZero || !definition.padding.isZero else { return contentView }
+        if let terminalView = contentView as? GhosttyHostView {
+            terminalView.drawsActiveAppearance = false
+        } else if let browserView = contentView as? BrowserPaneView {
+            browserView.drawsActiveAppearance = false
+        }
+        return PaneBoxView(contentView: contentView, border: definition.border, padding: definition.padding)
     }
 }
 
@@ -650,6 +764,9 @@ final class MosaicWorkspaceView: NSView {
             }
         }
 
+        let framesByPaneID = Dictionary(uniqueKeysWithValues: assignments.map { ($0.paneID, $0.frame) })
+        applyCollapsedBorders(for: framesByPaneID)
+
         for assignment in assignments {
             let paneView = paneRegistry.view(for: assignment.paneID)
             if paneView.superview !== self {
@@ -662,6 +779,93 @@ final class MosaicWorkspaceView: NSView {
                 paneView.isHidden = false
             }
         }
+    }
+
+    private func applyCollapsedBorders(for framesByPaneID: [String: NSRect]) {
+        for (paneID, frame) in framesByPaneID {
+            guard let paneBox = paneRegistry.view(for: paneID) as? PaneBoxView else { continue }
+            let border = paneBox.configuredBorder
+            let displayBorder = PaneBoxEdges(
+                top: collapsedBorderWidth(
+                    paneID: paneID,
+                    frame: frame,
+                    edge: .top,
+                    ownWidth: border.top,
+                    framesByPaneID: framesByPaneID
+                ),
+                right: collapsedBorderWidth(
+                    paneID: paneID,
+                    frame: frame,
+                    edge: .right,
+                    ownWidth: border.right,
+                    framesByPaneID: framesByPaneID
+                ),
+                bottom: collapsedBorderWidth(
+                    paneID: paneID,
+                    frame: frame,
+                    edge: .bottom,
+                    ownWidth: border.bottom,
+                    framesByPaneID: framesByPaneID
+                ),
+                left: collapsedBorderWidth(
+                    paneID: paneID,
+                    frame: frame,
+                    edge: .left,
+                    ownWidth: border.left,
+                    framesByPaneID: framesByPaneID
+                )
+            )
+            paneBox.setDisplayBorder(displayBorder)
+        }
+    }
+
+    private enum PaneEdge { case top, right, bottom, left }
+
+    private func collapsedBorderWidth(
+        paneID: String,
+        frame: NSRect,
+        edge: PaneEdge,
+        ownWidth: Double,
+        framesByPaneID: [String: NSRect]
+    ) -> Double {
+        var adjacentWidth: Double?
+        for (otherPaneID, otherFrame) in framesByPaneID where otherPaneID != paneID {
+            guard areAdjacent(frame, otherFrame, edge: edge) else { continue }
+            let otherBorder = (paneRegistry.view(for: otherPaneID) as? PaneBoxView)?.configuredBorder ?? .zero
+            let otherWidth: Double
+            switch edge {
+            case .top: otherWidth = otherBorder.bottom
+            case .right: otherWidth = otherBorder.left
+            case .bottom: otherWidth = otherBorder.top
+            case .left: otherWidth = otherBorder.right
+            }
+            adjacentWidth = max(adjacentWidth ?? 0, otherWidth)
+        }
+        guard let adjacentWidth else { return ownWidth }
+        return max(ownWidth, adjacentWidth) / 2
+    }
+
+    private static let paneFrameTolerance = 0.5
+
+    private func areAdjacent(_ frame: NSRect, _ otherFrame: NSRect, edge: PaneEdge) -> Bool {
+        switch edge {
+        case .top:
+            return abs(frame.maxY - otherFrame.minY) < Self.paneFrameTolerance
+                && rangesOverlap(frame.minX...frame.maxX, otherFrame.minX...otherFrame.maxX)
+        case .right:
+            return abs(frame.maxX - otherFrame.minX) < Self.paneFrameTolerance
+                && rangesOverlap(frame.minY...frame.maxY, otherFrame.minY...otherFrame.maxY)
+        case .bottom:
+            return abs(frame.minY - otherFrame.maxY) < Self.paneFrameTolerance
+                && rangesOverlap(frame.minX...frame.maxX, otherFrame.minX...otherFrame.maxX)
+        case .left:
+            return abs(frame.minX - otherFrame.maxX) < Self.paneFrameTolerance
+                && rangesOverlap(frame.minY...frame.maxY, otherFrame.minY...otherFrame.maxY)
+        }
+    }
+
+    private func rangesOverlap(_ lhs: ClosedRange<CGFloat>, _ rhs: ClosedRange<CGFloat>) -> Bool {
+        min(lhs.upperBound, rhs.upperBound) - max(lhs.lowerBound, rhs.lowerBound) > Self.paneFrameTolerance
     }
 
     private static func framesMatch(_ lhs: NSRect, _ rhs: NSRect) -> Bool {

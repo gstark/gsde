@@ -98,6 +98,22 @@ web: npm run dev
 
 Browser storage is persisted beside the resolved config file using CEF's global browser profile. For project configs, all browser panes share `.config/gsde/chromium/Default` in the project directory. For an explicit `GSDE_CONFIG=/path/to/config.toml`, the shared profile is `/path/to/chromium/Default`. GSDE creates the needed directories automatically. Built-in fallback launches use `~/Library/Application Support/GSDE/Chromium`. The `profile` field is currently accepted for config compatibility, but configured browser panes intentionally share one project profile.
 
+Panes can optionally define CSS-style pixel border and padding shorthands. Defaults can be set by pane kind and overridden per pane:
+
+```toml
+[[pane_defaults.terminal]]
+border = "0 1"
+padding = "8 12"
+
+[[panes]]
+id = "terminal.main"
+kind = "terminal"
+border = "0 0 0 1"
+padding = "4"
+```
+
+`border` and `padding` accept one to four non-negative pixel values, with optional `px` suffixes, using CSS shorthand expansion: one value applies to all sides, two are vertical/horizontal, three are top/horizontal/bottom, and four are top/right/bottom/left. Defaults are `0`. Pane borders are drawn between layout cells and visually collapse with adjacent pane borders; padding is always applied inside the border and does not collapse.
+
 Pane IDs must be unique. They are also the tokens used in layout areas, so choose IDs without whitespace.
 
 ## Layout area syntax

@@ -56,6 +56,67 @@ struct WorkspaceConfigTests {
         ])
     }
 
+    @Test("pane kind defaults apply border and padding")
+    func paneKindDefaultsApplyBorderAndPadding() throws {
+        let directory = try temporaryDirectory()
+        let configURL = directory.appendingPathComponent("defaults.toml")
+        try """
+        version = 1
+        startup_layout = "work"
+
+        [[pane_defaults.terminal]]
+        border = "1"
+        padding = "2 3"
+
+        [[panes]]
+        id = "inherited"
+        kind = "terminal"
+
+        [[panes]]
+        id = "override"
+        kind = "terminal"
+        padding = "4"
+
+        [[layouts]]
+        id = "work"
+        areas = ["inherited override"]
+        """.write(to: configURL, atomically: true, encoding: .utf8)
+
+        let result = WorkspaceConfigLoader(environment: ["GSDE_CONFIG": configURL.path], homeDirectory: directory).load()
+
+        #expect(result.diagnostics.isEmpty)
+        #expect(result.config.panes[0].border == PaneBoxEdges(top: 1, right: 1, bottom: 1, left: 1))
+        #expect(result.config.panes[0].padding == PaneBoxEdges(top: 2, right: 3, bottom: 2, left: 3))
+        #expect(result.config.panes[1].border == PaneBoxEdges(top: 1, right: 1, bottom: 1, left: 1))
+        #expect(result.config.panes[1].padding == PaneBoxEdges(top: 4, right: 4, bottom: 4, left: 4))
+    }
+
+    @Test("pane border and padding use CSS shorthand")
+    func paneBorderAndPaddingUseCSSShorthand() throws {
+        let directory = try temporaryDirectory()
+        let configURL = directory.appendingPathComponent("box.toml")
+        try """
+        version = 1
+        startup_layout = "work"
+
+        [[panes]]
+        id = "term"
+        kind = "terminal"
+        border = "0 1px 2 3px"
+        padding = "4 5"
+
+        [[layouts]]
+        id = "work"
+        areas = ["term"]
+        """.write(to: configURL, atomically: true, encoding: .utf8)
+
+        let result = WorkspaceConfigLoader(environment: ["GSDE_CONFIG": configURL.path], homeDirectory: directory).load()
+
+        #expect(result.diagnostics.isEmpty)
+        #expect(result.config.panes.first?.border == PaneBoxEdges(top: 0, right: 1, bottom: 2, left: 3))
+        #expect(result.config.panes.first?.padding == PaneBoxEdges(top: 4, right: 5, bottom: 4, left: 5))
+    }
+
     @Test("layout flash settings can be configured")
     func layoutFlashSettingsCanBeConfigured() throws {
         let directory = try temporaryDirectory()

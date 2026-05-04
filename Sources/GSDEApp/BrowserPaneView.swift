@@ -42,6 +42,7 @@ final class BrowserPaneView: NSView {
     private var contextMenuMonitor: Any?
     private var pendingInitialURL: URL
     private var activePaneObserver: NSObjectProtocol?
+    var drawsActiveAppearance = true
 
     init(
         frame frameRect: NSRect = .zero,
@@ -398,6 +399,11 @@ final class BrowserPaneView: NSView {
     }
 
     private func setActiveAppearance(_ active: Bool) {
+        guard drawsActiveAppearance else {
+            layer?.borderWidth = 0
+            layer?.borderColor = nil
+            return
+        }
         layer?.borderWidth = active ? 2 : 0
         layer?.borderColor = active ? NSColor.controlAccentColor.cgColor : nil
     }
