@@ -215,11 +215,10 @@ final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
     private func sendMousePosition(_ event: NSEvent) {
         guard let host else { return }
         let point = convert(event.locationInWindow, from: nil)
-        let scale = backingScaleFactor
         gsde_ghostty_host_mouse_pos(
             host,
-            Double(point.x) * scale,
-            Double(bounds.height - point.y) * scale,
+            Double(point.x),
+            Double(bounds.height - point.y),
             event.modifierFlags.ghosttyMods
         )
     }
