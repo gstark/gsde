@@ -600,6 +600,7 @@ static void copy_cef_string_to_buffer(const cef_string_t *cef_string, char *buff
 
 static void update_browser_url_from_frame(gsde_chromium_browser_t *browser, cef_frame_t *frame) {
     if (!browser || !frame || !frame->get_url || !cef_string_userfree_utf16_free_ptr) return;
+    if (frame->is_main && !frame->is_main(frame)) return;
     cef_string_userfree_t cef_url = frame->get_url(frame);
     if (!cef_url) return;
     copy_cef_string_to_buffer(cef_url, browser->current_url, sizeof(browser->current_url));
@@ -682,7 +683,8 @@ static void CEF_CALLBACK gsde_on_load_error(cef_load_handler_t *self, cef_browse
 }
 
 static void CEF_CALLBACK gsde_on_address_change(cef_display_handler_t *self, cef_browser_t *cef_browser, cef_frame_t *frame, const cef_string_t *url) {
-    (void)cef_browser; (void)frame;
+    (void)cef_browser;
+    if (frame && frame->is_main && !frame->is_main(frame)) return;
     gsde_chromium_browser_t *browser = browser_from_display_handler(self);
     copy_cef_string_to_buffer(url, browser->current_url, sizeof(browser->current_url));
 }

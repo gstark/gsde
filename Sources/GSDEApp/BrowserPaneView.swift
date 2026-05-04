@@ -790,7 +790,7 @@ final class BrowserPaneView: NSView {
         }
 
         let currentURL = String(cString: gsde_chromium_browser_current_url(cefBrowser))
-        if !currentURL.isEmpty {
+        if shouldDisplayURLString(currentURL) {
             if urlField.currentEditor() == nil {
                 urlField.stringValue = currentURL
             }
@@ -813,6 +813,10 @@ final class BrowserPaneView: NSView {
             backendStatusLabel.stringValue = String(cString: gsde_chromium_backend_status())
         }
         updateNavigationButtons()
+    }
+
+    private func shouldDisplayURLString(_ value: String) -> Bool {
+        !value.isEmpty && value != "about:blank"
     }
 
     private func resizeCEFBrowser() {
