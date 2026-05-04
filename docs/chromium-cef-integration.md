@@ -36,7 +36,7 @@ GSDE Helper (Plugin).app
 GSDE Helper (Renderer).app
 ```
 
-The bridge currently exposes CEF initialization, message loop work, helper process execution, browser creation, native view attachment, navigation, resizing, load/display diagnostics, same-pane popup handling, safe context-menu interception, deterministic permission denial/status logging, basic download handling with status display, edit commands, find with match count status, zoom, print, view source, focus, DevTools entry points, and graceful browser close/shutdown tracking. The CEF backend is opt-in via `GSDE_ENABLE_CEF=1` or `make run-cef`; default app launch uses the WebKit fallback while CEF integration stabilizes.
+The bridge currently exposes CEF initialization, message loop work, helper process execution, browser creation, native view attachment, navigation, resizing, load/display diagnostics, same-pane popup handling, safe context-menu interception, deterministic permission/auth/certificate cancellation with status logging, basic download handling with status display, edit commands, find with match count status, zoom, print, view source, focus, DevTools entry points, and graceful browser close/shutdown tracking. The CEF backend is opt-in via `GSDE_ENABLE_CEF=1` or `make run-cef`; default app launch uses the WebKit fallback while CEF integration stabilizes.
 
 Current verified CEF paths:
 
