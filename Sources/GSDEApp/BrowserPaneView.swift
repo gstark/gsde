@@ -186,6 +186,8 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             zoomOut()
         case ([.command], "0"):
             zoomReset()
+        case ([.command], "p"):
+            printPage()
         case ([.command, .option], "i"):
             showDeveloperTools()
         case ([], "\u{1b}"):
@@ -402,6 +404,14 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             gsde_chromium_browser_zoom_reset(cefBrowser)
         } else {
             setWebKitPageZoom(1.0)
+        }
+    }
+
+    private func printPage() {
+        if let cefBrowser {
+            gsde_chromium_browser_print(cefBrowser)
+        } else {
+            webView.printView(nil)
         }
     }
 

@@ -35,6 +35,7 @@ void gsde_chromium_browser_stop_finding(gsde_chromium_browser_t *browser, int cl
 void gsde_chromium_browser_zoom_in(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_zoom_out(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_zoom_reset(gsde_chromium_browser_t *browser);
+void gsde_chromium_browser_print(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_focus(gsde_chromium_browser_t *browser, int focused);
 void gsde_chromium_browser_show_devtools(gsde_chromium_browser_t *browser);
 

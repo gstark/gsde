@@ -658,6 +658,16 @@ void gsde_chromium_browser_zoom_reset(gsde_chromium_browser_t *browser) {
 #endif
 }
 
+void gsde_chromium_browser_print(gsde_chromium_browser_t *browser) {
+#if GSDE_HAVE_CEF_HEADERS
+    if (!browser || !browser->browser) return;
+    cef_browser_host_t *host = browser->browser->get_host(browser->browser);
+    if (host && host->print) host->print(host);
+#else
+    (void)browser;
+#endif
+}
+
 void gsde_chromium_browser_focus(gsde_chromium_browser_t *browser, int focused) {
 #if GSDE_HAVE_CEF_HEADERS
     if (!browser || !browser->browser) return;
