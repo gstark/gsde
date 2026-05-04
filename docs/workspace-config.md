@@ -14,6 +14,14 @@ You can also launch with an explicit config path using `GSDE_CONFIG`:
 GSDE_CONFIG="$PWD/docs/sample-configs/browser-terminal-dev.toml" make run-cef-foreground
 ```
 
+Validate the resolved configuration without launching the app:
+
+```sh
+gsde --validate
+# or validate a specific project directory
+gsde --validate /path/to/project
+```
+
 ## Lookup order
 
 GSDE loads the first available configuration in this order:
@@ -56,6 +64,33 @@ Supported pane kinds:
 
 - `terminal`: native Ghostty terminal host. Terminal panes must not set `url` or `profile`.
 - `browser`: Chromium/CEF browser pane. Browser panes must set an absolute `url` with a scheme such as `https://` or `http://`.
+
+Terminal panes can optionally run a startup command. Use `command` for a direct command line:
+
+```toml
+[[panes]]
+id = "terminal.agent"
+kind = "terminal"
+command = "claude"
+```
+
+Or use `procfile` plus `process` to run a named Procfile entry:
+
+```toml
+[[panes]]
+id = "terminal.web"
+kind = "terminal"
+procfile = "Procfile.dev"
+process = "web"
+```
+
+Startup commands run from the project directory. Procfile paths are resolved relative to `GSDE_PROJECT_DIR`, i.e. the project directory passed to or inferred by the `gsde` launcher. For example, `process = "web"` with this `Procfile.dev` line runs `npm run dev` in the terminal:
+
+```text
+web: npm run dev
+```
+
+`command` cannot be combined with `procfile`/`process`, and `procfile`/`process` must be provided together.
 
 Browser profiles are persisted under `~/Library/Application Support/GSDE/Chromium/Profiles`. When `profile` is omitted, GSDE uses the pane `id` as the stable profile name. Set `profile` when several layouts should share browser state under a shorter or more explicit name.
 

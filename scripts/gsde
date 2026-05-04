@@ -3,11 +3,14 @@ set -eu
 
 usage() {
   cat <<'USAGE'
-Usage: gsde [project-directory]
+Usage: gsde [--validate] [project-directory]
 
 Launch GSDE for the current working directory, or for project-directory when
 provided. GSDE will load .config/gsde/config.toml from that project directory
 when the file exists.
+
+Options:
+  --validate   Validate the resolved workspace config and exit without launching.
 
 Set GSDE_APP_PATH=/path/to/GSDE.app to override app discovery.
 USAGE
@@ -16,6 +19,12 @@ USAGE
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
   usage
   exit 0
+fi
+
+VALIDATE=0
+if [ "${1:-}" = "--validate" ]; then
+  VALIDATE=1
+  shift
 fi
 
 if [ "$#" -gt 1 ]; then
@@ -61,6 +70,15 @@ fi
 if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
   echo "gsde: could not find GSDE.app. Set GSDE_APP_PATH=/path/to/GSDE.app" >&2
   exit 69
+fi
+
+if [ "$VALIDATE" -eq 1 ]; then
+  APP_BINARY="$APP_PATH/Contents/MacOS/GSDE"
+  if [ ! -x "$APP_BINARY" ]; then
+    echo "gsde: could not find executable app binary at $APP_BINARY" >&2
+    exit 69
+  fi
+  exec env GSDE_VALIDATE_CONFIG=1 GSDE_PROJECT_DIR="$PROJECT_DIR" "$APP_BINARY"
 fi
 
 exec open -n --env GSDE_PROJECT_DIR="$PROJECT_DIR" "$APP_PATH"

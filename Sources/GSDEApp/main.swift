@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import ChromiumStub
 import GhosttyShim
 import GSDEConfig
@@ -11,14 +12,18 @@ final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
     private var displayLink: Timer?
     private var activePaneObserver: NSObjectProtocol?
     private var markedText = ""
+    private let startupCommand: String?
     private var handledTextInput = false
+    private var didRunStartupCommand = false
 
-    override init(frame frameRect: NSRect) {
+    init(frame frameRect: NSRect = .zero, startupCommand: String? = nil) {
+        self.startupCommand = startupCommand
         super.init(frame: frameRect)
         commonInit()
     }
 
     required init?(coder: NSCoder) {
+        self.startupCommand = nil
         super.init(coder: coder)
         commonInit()
     }
@@ -342,6 +347,7 @@ final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
                 userInfo: nil,
                 repeats: true
             )
+            runStartupCommandIfNeeded()
         } else {
             statusLabel?.stringValue = String(cString: gsde_ghostty_status())
         }
@@ -352,6 +358,20 @@ final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
         gsde_ghostty_host_tick(host)
         gsde_ghostty_host_draw(host)
         updateWindowTitleIfActive()
+        runStartupCommandIfNeeded()
+    }
+
+    private func runStartupCommandIfNeeded() {
+        guard !didRunStartupCommand,
+              let host,
+              let startupCommand,
+              !startupCommand.isEmpty
+        else { return }
+        didRunStartupCommand = true
+        let commandLine = startupCommand + "\n"
+        commandLine.withCString { pointer in
+            gsde_ghostty_host_text(host, pointer, UInt(commandLine.utf8.count))
+        }
     }
 
     private func resizeHost() {
@@ -489,7 +509,7 @@ final class ConfiguredPaneRegistry {
     private func makeView(for definition: PaneDefinition) -> NSView {
         switch definition.kind {
         case .terminal:
-            return GhosttyHostView()
+            return GhosttyHostView(startupCommand: definition.startupCommand)
         case .browser:
             guard let url = definition.url else {
                 preconditionFailure("Validated browser pane \(definition.id) is missing its URL")
@@ -1459,7 +1479,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc private func browserShowDeveloperTools(_ sender: Any?) { activeBrowserPane?.browserShowDeveloperTools() }
 }
 
-if ProcessInfo.processInfo.environment["GSDE_VERIFY_WORKSPACE_STARTUP"] != nil {
+if ProcessInfo.processInfo.environment["GSDE_VALIDATE_CONFIG"] != nil {
+    let result = WorkspaceConfigLoader().load()
+    for diagnostic in result.diagnostics {
+        FileHandle.standardError.write(Data("\(diagnostic)\n".utf8))
+    }
+    if result.diagnostics.contains(where: { $0.severity == .error }) {
+        exit(1)
+    }
+
+    let sourceDescription = result.source.url?.path ?? "built-in default"
+    print("GSDE config valid: \(sourceDescription)")
+    print("panes: \(result.config.panes.count)")
+    print("layouts: \(result.config.validatedLayouts.map(\.id).joined(separator: ", "))")
+    print("startup_layout: \(result.config.startupLayout)")
+    exit(0)
+} else if ProcessInfo.processInfo.environment["GSDE_VERIFY_WORKSPACE_STARTUP"] != nil {
     let workspaceView = AppDelegate.makeWorkspaceView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
     print(String(describing: type(of: workspaceView)))
 } else if let rawSize = ProcessInfo.processInfo.environment["GSDE_VERIFY_MOSAIC_LAYOUT"] {

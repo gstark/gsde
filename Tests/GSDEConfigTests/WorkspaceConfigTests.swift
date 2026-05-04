@@ -160,6 +160,65 @@ struct WorkspaceConfigTests {
         #expect(result.config.startupPaneDefinitions.first?.profile == "shared.docs")
     }
 
+    @Test("terminal panes can declare direct startup commands")
+    func terminalPaneDirectStartupCommand() throws {
+        let directory = try temporaryDirectory()
+        let configURL = directory.appendingPathComponent("command.toml")
+        try """
+        version = 1
+        startup_layout = "work"
+
+        [[panes]]
+        id = "agent"
+        kind = "terminal"
+        command = "claude"
+
+        [[layouts]]
+        id = "work"
+        areas = ["agent"]
+        """.write(to: configURL, atomically: true, encoding: .utf8)
+
+        let result = WorkspaceConfigLoader(environment: ["GSDE_CONFIG": configURL.path], homeDirectory: directory).load()
+
+        #expect(result.diagnostics.isEmpty)
+        #expect(result.config.panes.first?.command == "claude")
+        #expect(result.config.panes.first?.startupCommand == "cd '\(directory.path)' && claude")
+    }
+
+    @Test("terminal panes can declare Procfile startup commands")
+    func terminalPaneProcfileStartupCommand() throws {
+        let project = try temporaryDirectory()
+        try """
+        web: npm run dev
+        worker: swift run Worker
+        """.write(to: project.appendingPathComponent("Procfile.dev"), atomically: true, encoding: .utf8)
+
+        let configDirectory = project.appendingPathComponent(".config/gsde", isDirectory: true)
+        try FileManager.default.createDirectory(at: configDirectory, withIntermediateDirectories: true)
+        let configURL = configDirectory.appendingPathComponent("config.toml")
+        try """
+        version = 1
+        startup_layout = "work"
+
+        [[panes]]
+        id = "web"
+        kind = "terminal"
+        procfile = "Procfile.dev"
+        process = "web"
+
+        [[layouts]]
+        id = "work"
+        areas = ["web"]
+        """.write(to: configURL, atomically: true, encoding: .utf8)
+
+        let result = WorkspaceConfigLoader(environment: ["GSDE_PROJECT_DIR": project.path], homeDirectory: project).load()
+
+        #expect(result.diagnostics.isEmpty)
+        #expect(result.config.panes.first?.procfile == "Procfile.dev")
+        #expect(result.config.panes.first?.process == "web")
+        #expect(result.config.panes.first?.startupCommand == "cd '\(project.path)' && npm run dev")
+    }
+
     @Test("terminal panes reject browser profiles")
     func terminalPaneProfileIsInvalid() throws {
         let directory = try temporaryDirectory()

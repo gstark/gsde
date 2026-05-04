@@ -84,12 +84,29 @@ public struct PaneDefinition: Equatable, Sendable {
     public let kind: Kind
     public let url: URL?
     public let profile: String?
+    public let command: String?
+    public let procfile: String?
+    public let process: String?
+    public let startupCommand: String?
 
-    public init(id: String, kind: Kind, url: URL?, profile: String? = nil) {
+    public init(
+        id: String,
+        kind: Kind,
+        url: URL?,
+        profile: String? = nil,
+        command: String? = nil,
+        procfile: String? = nil,
+        process: String? = nil,
+        startupCommand: String? = nil
+    ) {
         self.id = id
         self.kind = kind
         self.url = url
         self.profile = profile
+        self.command = command
+        self.procfile = procfile
+        self.process = process
+        self.startupCommand = startupCommand ?? command
     }
 }
 
@@ -265,7 +282,8 @@ public final class WorkspaceConfigLoader {
         do {
             let text = try String(contentsOf: url, encoding: .utf8)
             let config = try WorkspaceConfigTOMLParser(text: text).parse()
-            return WorkspaceConfigLoadResult(config: config, source: source, diagnostics: [])
+            let resolvedConfig = try resolveTerminalStartupCommands(in: config, sourceURL: url)
+            return WorkspaceConfigLoadResult(config: resolvedConfig, source: source, diagnostics: [])
         } catch {
             let diagnostic = WorkspaceConfigDiagnostic(
                 severity: .error,
@@ -274,6 +292,66 @@ public final class WorkspaceConfigLoader {
             )
             return WorkspaceConfigLoadResult(config: .builtIn, source: .builtIn, diagnostics: [diagnostic])
         }
+    }
+
+    private func resolveTerminalStartupCommands(in config: WorkspaceConfig, sourceURL: URL) throws -> WorkspaceConfig {
+        let projectRoot = environment["GSDE_PROJECT_DIR"]
+            .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+            .map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath, isDirectory: true) }
+            ?? sourceURL.deletingLastPathComponent()
+
+        let panes = try config.panes.map { pane -> PaneDefinition in
+            guard pane.kind == .terminal else { return pane }
+
+            let command: String?
+            if let procfile = pane.procfile, let process = pane.process {
+                let procfileURL = URL(fileURLWithPath: procfile, relativeTo: projectRoot).standardizedFileURL
+                guard fileManager.fileExists(atPath: procfileURL.path) else {
+                    throw WorkspaceConfigParseError.missingProcfile(path: procfile)
+                }
+                command = try Self.command(named: process, inProcfileAt: procfileURL)
+            } else {
+                command = pane.command
+            }
+
+            guard let command else { return pane }
+            return PaneDefinition(
+                id: pane.id,
+                kind: pane.kind,
+                url: pane.url,
+                profile: pane.profile,
+                command: pane.command,
+                procfile: pane.procfile,
+                process: pane.process,
+                startupCommand: "cd \(Self.shellQuote(projectRoot.path)) && \(command)"
+            )
+        }
+
+        return WorkspaceConfig(
+            version: config.version,
+            panes: panes,
+            layouts: config.layouts,
+            validatedLayouts: config.validatedLayouts,
+            startupLayout: config.startupLayout
+        )
+    }
+
+    private static func shellQuote(_ text: String) -> String {
+        "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    private static func command(named process: String, inProcfileAt url: URL) throws -> String {
+        let text = try String(contentsOf: url, encoding: .utf8)
+        for rawLine in text.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty, !line.hasPrefix("#"), let colon = line.firstIndex(of: ":") else { continue }
+            let name = line[..<colon].trimmingCharacters(in: .whitespacesAndNewlines)
+            let command = line[line.index(after: colon)...].trimmingCharacters(in: .whitespacesAndNewlines)
+            if name == process, !command.isEmpty {
+                return String(command)
+            }
+        }
+        throw WorkspaceConfigParseError.missingProcfileProcess(procfile: url.lastPathComponent, process: process)
     }
 }
 
@@ -292,6 +370,8 @@ enum WorkspaceConfigParseError: Error, Equatable, CustomStringConvertible {
     case unknownPaneInLayout(layout: String, pane: String)
     case nonRectangularPaneArea(layout: String, pane: String, rows: ClosedRange<Int>, columns: ClosedRange<Int>)
     case duplicateIdentifier(table: String, id: String)
+    case missingProcfile(path: String)
+    case missingProcfileProcess(procfile: String, process: String)
 
     var description: String {
         switch self {
@@ -309,6 +389,8 @@ enum WorkspaceConfigParseError: Error, Equatable, CustomStringConvertible {
         case .unknownPaneInLayout(let layout, let pane): return "layout \(layout) references unknown pane \(pane)"
         case .nonRectangularPaneArea(let layout, let pane, let rows, let columns): return "layout \(layout) pane \(pane) areas are not a single rectangle; bounding box rows \(rows.lowerBound)-\(rows.upperBound), columns \(columns.lowerBound)-\(columns.upperBound) is not fully occupied"
         case .duplicateIdentifier(let table, let id): return "\(table) id \(id) is duplicated"
+        case .missingProcfile(let path): return "procfile \(path) does not exist"
+        case .missingProcfileProcess(let procfile, let process): return "procfile \(procfile) does not define process \(process)"
         }
     }
 }
@@ -364,7 +446,7 @@ struct WorkspaceConfigTOMLParser {
             case .root:
                 try insert(key: String(key), value: String(value), into: &root, line: lineNumber, table: "root", allowedKeys: ["version", "startup_layout"])
             case .pane(let index):
-                try insert(key: String(key), value: String(value), into: &paneTables[index], line: lineNumber, table: "panes[\(index)]", allowedKeys: ["id", "kind", "url", "profile"])
+                try insert(key: String(key), value: String(value), into: &paneTables[index], line: lineNumber, table: "panes[\(index)]", allowedKeys: ["id", "kind", "url", "profile", "command", "procfile", "process"])
             case .layout(let index):
                 try insert(key: String(key), value: String(value), into: &layoutTables[index], line: lineNumber, table: "layouts[\(index)]", allowedKeys: ["id", "areas"])
             }
@@ -394,8 +476,20 @@ struct WorkspaceConfigTOMLParser {
         }
         let urlString = try parseString(fields["url"], field: "\(table).url")
         let profile = try parseString(fields["profile"], field: "\(table).profile")
+        let command = try parseString(fields["command"], field: "\(table).command")
+        let procfile = try parseString(fields["procfile"], field: "\(table).procfile")
+        let process = try parseString(fields["process"], field: "\(table).process")
         if let profile, profile.isEmpty {
             throw WorkspaceConfigParseError.invalidValue(field: "\(table).profile", value: profile)
+        }
+        if let command, command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw WorkspaceConfigParseError.invalidValue(field: "\(table).command", value: command)
+        }
+        if let procfile, procfile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw WorkspaceConfigParseError.invalidValue(field: "\(table).procfile", value: procfile)
+        }
+        if let process, process.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw WorkspaceConfigParseError.invalidValue(field: "\(table).process", value: process)
         }
         let url = try urlString.map { rawURL in
             guard let url = URL(string: rawURL), url.scheme != nil else {
@@ -411,12 +505,27 @@ struct WorkspaceConfigTOMLParser {
             if profile != nil {
                 throw WorkspaceConfigParseError.invalidValue(field: "\(table).profile", value: "terminal panes cannot define profile")
             }
+            if command != nil && (procfile != nil || process != nil) {
+                throw WorkspaceConfigParseError.invalidValue(field: "\(table).command", value: "command cannot be combined with procfile/process")
+            }
+            if (procfile == nil) != (process == nil) {
+                throw WorkspaceConfigParseError.invalidValue(field: "\(table).procfile", value: "procfile and process must be provided together")
+            }
         case .browser:
             if url == nil {
                 throw WorkspaceConfigParseError.missingRequiredField(table: table, field: "url")
             }
+            if command != nil {
+                throw WorkspaceConfigParseError.invalidValue(field: "\(table).command", value: "browser panes cannot define command")
+            }
+            if procfile != nil {
+                throw WorkspaceConfigParseError.invalidValue(field: "\(table).procfile", value: "browser panes cannot define procfile")
+            }
+            if process != nil {
+                throw WorkspaceConfigParseError.invalidValue(field: "\(table).process", value: "browser panes cannot define process")
+            }
         }
-        return PaneDefinition(id: id, kind: kind, url: url, profile: profile)
+        return PaneDefinition(id: id, kind: kind, url: url, profile: profile, command: command, procfile: procfile, process: process)
     }
 
     private func parseLayout(_ fields: [String: String], index: Int) throws -> LayoutDefinition {
