@@ -75,6 +75,7 @@ Run CLI smoke tests that launch the app, wait for CEF browser creation and succe
 make smoke-cef           # two browser panes
 make smoke-cef-four      # four browser panes
 make smoke-cef-graceful  # two panes plus graceful browser close/shutdown
+make smoke-cef-repeat    # repeated graceful launch/shutdown
 make verify-cef          # all CEF smoke tests
 ```
 

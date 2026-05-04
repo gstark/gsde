@@ -44,6 +44,7 @@ Current verified CEF paths:
 make smoke-cef           # 2 browser panes load HTTP 200
 make smoke-cef-four      # 4 browser panes load HTTP 200
 make smoke-cef-graceful  # browser panes close and CEF shuts down cleanly
+make smoke-cef-repeat    # repeated graceful launch/shutdown
 make verify-cef          # all of the above
 ```
 
