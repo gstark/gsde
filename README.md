@@ -69,11 +69,12 @@ make run-cef-foreground
 
 `make app-with-chromium` packages the CEF framework and the required macOS helper app variants (`GSDE Helper`, `GSDE Helper (Renderer)`, `GSDE Helper (GPU)`, etc.) under `GSDE.app/Contents/Frameworks`.
 
-Run a CLI smoke test that launches the app, waits for CEF browser creation and successful page loads, then shuts it down:
+Run CLI smoke tests that launch the app, wait for CEF browser creation and successful page loads, then shut it down:
 
 ```sh
-make smoke-cef
-make smoke-cef-four
+make smoke-cef       # two browser panes
+make smoke-cef-four  # four browser panes
+make verify-cef      # both smoke tests
 ```
 
 Reset saved app state and Chromium profile data:
