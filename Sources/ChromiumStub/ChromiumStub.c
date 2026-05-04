@@ -245,6 +245,7 @@ struct gsde_chromium_browser {
     cef_context_menu_handler_t context_menu_handler;
     cef_download_handler_t download_handler;
     cef_find_handler_t find_handler;
+    cef_permission_handler_t permission_handler;
     atomic_int ref_count;
     cef_browser_t *browser;
     cef_window_handle_t view;
@@ -287,6 +288,10 @@ static gsde_chromium_browser_t *browser_from_find_handler(cef_find_handler_t *ha
     return (gsde_chromium_browser_t *)((char *)handler - offsetof(gsde_chromium_browser_t, find_handler));
 }
 
+static gsde_chromium_browser_t *browser_from_permission_handler(cef_permission_handler_t *handler) {
+    return (gsde_chromium_browser_t *)((char *)handler - offsetof(gsde_chromium_browser_t, permission_handler));
+}
+
 static gsde_chromium_browser_t *browser_from_client_base(cef_base_ref_counted_t *base) {
     return (gsde_chromium_browser_t *)((char *)base - offsetof(gsde_chromium_browser_t, client));
 }
@@ -313,6 +318,10 @@ static gsde_chromium_browser_t *browser_from_download_base(cef_base_ref_counted_
 
 static gsde_chromium_browser_t *browser_from_find_base(cef_base_ref_counted_t *base) {
     return (gsde_chromium_browser_t *)((char *)base - offsetof(gsde_chromium_browser_t, find_handler));
+}
+
+static gsde_chromium_browser_t *browser_from_permission_base(cef_base_ref_counted_t *base) {
+    return (gsde_chromium_browser_t *)((char *)base - offsetof(gsde_chromium_browser_t, permission_handler));
 }
 
 static void CEF_CALLBACK gsde_client_add_ref(cef_base_ref_counted_t *base) {
@@ -427,6 +436,22 @@ static int CEF_CALLBACK gsde_find_has_at_least_one_ref(cef_base_ref_counted_t *b
     return atomic_load(&browser_from_find_base(base)->ref_count) >= 1;
 }
 
+static void CEF_CALLBACK gsde_permission_add_ref(cef_base_ref_counted_t *base) {
+    atomic_fetch_add(&browser_from_permission_base(base)->ref_count, 1);
+}
+
+static int CEF_CALLBACK gsde_permission_release(cef_base_ref_counted_t *base) {
+    return atomic_fetch_sub(&browser_from_permission_base(base)->ref_count, 1) == 1;
+}
+
+static int CEF_CALLBACK gsde_permission_has_one_ref(cef_base_ref_counted_t *base) {
+    return atomic_load(&browser_from_permission_base(base)->ref_count) == 1;
+}
+
+static int CEF_CALLBACK gsde_permission_has_at_least_one_ref(cef_base_ref_counted_t *base) {
+    return atomic_load(&browser_from_permission_base(base)->ref_count) >= 1;
+}
+
 static cef_life_span_handler_t *CEF_CALLBACK gsde_get_life_span_handler(cef_client_t *client) {
     return &browser_from_client(client)->life_span_handler;
 }
@@ -449,6 +474,10 @@ static cef_download_handler_t *CEF_CALLBACK gsde_get_download_handler(cef_client
 
 static cef_find_handler_t *CEF_CALLBACK gsde_get_find_handler(cef_client_t *client) {
     return &browser_from_client(client)->find_handler;
+}
+
+static cef_permission_handler_t *CEF_CALLBACK gsde_get_permission_handler(cef_client_t *client) {
+    return &browser_from_client(client)->permission_handler;
 }
 
 static void CEF_CALLBACK gsde_on_after_created(cef_life_span_handler_t *self, cef_browser_t *cef_browser) {
@@ -726,6 +755,59 @@ static void CEF_CALLBACK gsde_on_find_result(
     }
 }
 
+static int CEF_CALLBACK gsde_on_request_media_access_permission(
+    cef_permission_handler_t *self,
+    cef_browser_t *cef_browser,
+    cef_frame_t *frame,
+    const cef_string_t *requesting_origin,
+    uint32_t requested_permissions,
+    cef_media_access_callback_t *callback
+) {
+    (void)cef_browser; (void)frame;
+    gsde_chromium_browser_t *browser = browser_from_permission_handler(self);
+    char origin_buffer[512];
+    copy_cef_string_to_buffer(requesting_origin, origin_buffer, sizeof(origin_buffer));
+    char message[768];
+    snprintf(message, sizeof(message), "CEF browser #%d denied media permission from %s (%u)", browser->browser_id, origin_buffer, requested_permissions);
+    snprintf(browser->status_message, sizeof(browser->status_message), "Media permission denied");
+    gsde_log(message);
+    if (callback && callback->cancel) callback->cancel(callback);
+    return 1;
+}
+
+static int CEF_CALLBACK gsde_on_show_permission_prompt(
+    cef_permission_handler_t *self,
+    cef_browser_t *cef_browser,
+    uint64_t prompt_id,
+    const cef_string_t *requesting_origin,
+    uint32_t requested_permissions,
+    cef_permission_prompt_callback_t *callback
+) {
+    (void)cef_browser;
+    gsde_chromium_browser_t *browser = browser_from_permission_handler(self);
+    char origin_buffer[512];
+    copy_cef_string_to_buffer(requesting_origin, origin_buffer, sizeof(origin_buffer));
+    char message[768];
+    snprintf(message, sizeof(message), "CEF browser #%d denied permission prompt %llu from %s (%u)", browser->browser_id, (unsigned long long)prompt_id, origin_buffer, requested_permissions);
+    snprintf(browser->status_message, sizeof(browser->status_message), "Permission denied");
+    gsde_log(message);
+    if (callback && callback->cont) callback->cont(callback, CEF_PERMISSION_RESULT_DENY);
+    return 1;
+}
+
+static void CEF_CALLBACK gsde_on_dismiss_permission_prompt(
+    cef_permission_handler_t *self,
+    cef_browser_t *cef_browser,
+    uint64_t prompt_id,
+    cef_permission_request_result_t result
+) {
+    (void)cef_browser;
+    gsde_chromium_browser_t *browser = browser_from_permission_handler(self);
+    char message[160];
+    snprintf(message, sizeof(message), "CEF browser #%d permission prompt %llu dismissed: %d", browser->browser_id, (unsigned long long)prompt_id, result);
+    gsde_log(message);
+}
+
 static void setup_client_base(cef_base_ref_counted_t *base, size_t size) {
     base->size = size;
     base->add_ref = gsde_client_add_ref;
@@ -780,6 +862,14 @@ static void setup_find_base(cef_base_ref_counted_t *base, size_t size) {
     base->release = gsde_find_release;
     base->has_one_ref = gsde_find_has_one_ref;
     base->has_at_least_one_ref = gsde_find_has_at_least_one_ref;
+}
+
+static void setup_permission_base(cef_base_ref_counted_t *base, size_t size) {
+    base->size = size;
+    base->add_ref = gsde_permission_add_ref;
+    base->release = gsde_permission_release;
+    base->has_one_ref = gsde_permission_has_one_ref;
+    base->has_at_least_one_ref = gsde_permission_has_at_least_one_ref;
 }
 
 static void set_cef_string(const char *utf8, cef_string_t *out) {
@@ -863,12 +953,14 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     setup_context_menu_base(&browser->context_menu_handler.base, sizeof(browser->context_menu_handler));
     setup_download_base(&browser->download_handler.base, sizeof(browser->download_handler));
     setup_find_base(&browser->find_handler.base, sizeof(browser->find_handler));
+    setup_permission_base(&browser->permission_handler.base, sizeof(browser->permission_handler));
     browser->client.get_life_span_handler = gsde_get_life_span_handler;
     browser->client.get_load_handler = gsde_get_load_handler;
     browser->client.get_display_handler = gsde_get_display_handler;
     browser->client.get_context_menu_handler = gsde_get_context_menu_handler;
     browser->client.get_download_handler = gsde_get_download_handler;
     browser->client.get_find_handler = gsde_get_find_handler;
+    browser->client.get_permission_handler = gsde_get_permission_handler;
     browser->life_span_handler.on_before_popup = gsde_on_before_popup;
     browser->life_span_handler.on_after_created = gsde_on_after_created;
     browser->life_span_handler.do_close = gsde_do_close;
@@ -887,6 +979,9 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     browser->download_handler.on_before_download = gsde_on_before_download;
     browser->download_handler.on_download_updated = gsde_on_download_updated;
     browser->find_handler.on_find_result = gsde_on_find_result;
+    browser->permission_handler.on_request_media_access_permission = gsde_on_request_media_access_permission;
+    browser->permission_handler.on_show_permission_prompt = gsde_on_show_permission_prompt;
+    browser->permission_handler.on_dismiss_permission_prompt = gsde_on_dismiss_permission_prompt;
 
     if (cache_path && cache_path[0] != '\0') {
         cef_request_context_settings_t context_settings;
