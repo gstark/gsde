@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 
 struct ghostty_api {
     void *handle;
@@ -28,6 +29,7 @@ struct ghostty_api {
     void (*surface_text)(ghostty_surface_t, const char *, uintptr_t);
     void (*surface_preedit)(ghostty_surface_t, const char *, uintptr_t);
     void (*surface_ime_point)(ghostty_surface_t, double *, double *, double *, double *);
+    void (*surface_complete_clipboard_request)(ghostty_surface_t, const char *, void *, bool);
     bool (*surface_key)(ghostty_surface_t, ghostty_input_key_s);
     bool (*surface_mouse_button)(ghostty_surface_t, ghostty_input_mouse_state_e, ghostty_input_mouse_button_e, ghostty_input_mods_e);
     void (*surface_mouse_pos)(ghostty_surface_t, double, double, ghostty_input_mods_e);
@@ -77,6 +79,60 @@ static void unregister_host(gsde_ghostty_host_t *host) {
     }
 }
 
+static char *read_command_output(const char *command, size_t max_bytes) {
+    FILE *pipe = popen(command, "r");
+    if (!pipe) return NULL;
+
+    size_t capacity = 4096;
+    char *buffer = malloc(capacity);
+    if (!buffer) {
+        pclose(pipe);
+        return NULL;
+    }
+
+    size_t length = 0;
+    while (!feof(pipe) && length < max_bytes) {
+        if (length + 2048 > capacity) {
+            capacity *= 2;
+            if (capacity > max_bytes + 1) capacity = max_bytes + 1;
+            char *grown = realloc(buffer, capacity);
+            if (!grown) {
+                free(buffer);
+                pclose(pipe);
+                return NULL;
+            }
+            buffer = grown;
+        }
+        size_t read_count = fread(buffer + length, 1, capacity - length - 1, pipe);
+        length += read_count;
+        if (read_count == 0) break;
+    }
+    int status_code = pclose(pipe);
+    if (status_code == -1 || !WIFEXITED(status_code) || WEXITSTATUS(status_code) != 0 || length == 0) {
+        free(buffer);
+        return NULL;
+    }
+    buffer[length] = '\0';
+    return buffer;
+}
+
+static bool write_command_input(const char *command, const char *data) {
+    FILE *pipe = popen(command, "w");
+    if (!pipe) return false;
+    if (data && data[0] != '\0') fputs(data, pipe);
+    int status_code = pclose(pipe);
+    return status_code != -1 && WIFEXITED(status_code) && WEXITSTATUS(status_code) == 0;
+}
+
+static const char *text_plain_clipboard_content(const ghostty_clipboard_content_s *contents, size_t count) {
+    if (!contents || count == 0) return NULL;
+    for (size_t i = 0; i < count; i++) {
+        const char *mime = contents[i].mime;
+        if (mime && strcmp(mime, "text/plain") == 0) return contents[i].data;
+    }
+    return contents[0].data;
+}
+
 static void wakeup_cb(void *userdata) { (void)userdata; }
 static bool action_cb(ghostty_app_t app, ghostty_target_s target, ghostty_action_s action) {
     (void)target;
@@ -97,9 +153,30 @@ static bool action_cb(ghostty_app_t app, ghostty_target_s target, ghostty_action
             return false;
     }
 }
-static bool read_clipboard_cb(void *userdata, ghostty_clipboard_e clipboard, void *request) { (void)userdata; (void)clipboard; (void)request; return false; }
-static void confirm_read_clipboard_cb(void *userdata, const char *title, void *request, ghostty_clipboard_request_e type) { (void)userdata; (void)title; (void)request; (void)type; }
-static void write_clipboard_cb(void *userdata, ghostty_clipboard_e clipboard, const ghostty_clipboard_content_s *contents, size_t count, bool confirm) { (void)userdata; (void)clipboard; (void)contents; (void)count; (void)confirm; }
+static bool read_clipboard_cb(void *userdata, ghostty_clipboard_e clipboard, void *request) {
+    (void)clipboard;
+    gsde_ghostty_host_t *host = userdata;
+    if (!host || !host->surface || !request) return false;
+    char *contents = read_command_output("/usr/bin/pbpaste", 1024 * 1024);
+    if (!contents) return false;
+    api.surface_complete_clipboard_request(host->surface, contents, request, false);
+    free(contents);
+    return true;
+}
+
+static void confirm_read_clipboard_cb(void *userdata, const char *title, void *request, ghostty_clipboard_request_e type) {
+    (void)type;
+    gsde_ghostty_host_t *host = userdata;
+    if (!host || !host->surface || !request) return;
+    api.surface_complete_clipboard_request(host->surface, title ? title : "", request, true);
+}
+
+static void write_clipboard_cb(void *userdata, ghostty_clipboard_e clipboard, const ghostty_clipboard_content_s *contents, size_t count, bool confirm) {
+    (void)userdata; (void)clipboard; (void)confirm;
+    const char *text = text_plain_clipboard_content(contents, count);
+    if (!text) return;
+    (void)write_command_input("/usr/bin/pbcopy", text);
+}
 static void close_surface_cb(void *userdata, bool confirm) { (void)userdata; (void)confirm; }
 
 static void *load_symbol(const char *name) {
@@ -158,6 +235,7 @@ static bool ensure_loaded(void) {
     LOAD_SYM(surface_text, "ghostty_surface_text");
     LOAD_SYM(surface_preedit, "ghostty_surface_preedit");
     LOAD_SYM(surface_ime_point, "ghostty_surface_ime_point");
+    LOAD_SYM(surface_complete_clipboard_request, "ghostty_surface_complete_clipboard_request");
     LOAD_SYM(surface_key, "ghostty_surface_key");
     LOAD_SYM(surface_mouse_button, "ghostty_surface_mouse_button");
     LOAD_SYM(surface_mouse_pos, "ghostty_surface_mouse_pos");
