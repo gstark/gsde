@@ -29,6 +29,7 @@ void gsde_chromium_browser_go_back(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_go_forward(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_reload(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_reload_ignore_cache(gsde_chromium_browser_t *browser);
+void gsde_chromium_browser_stop(gsde_chromium_browser_t *browser);
 void gsde_chromium_browser_focus(gsde_chromium_browser_t *browser, int focused);
 void gsde_chromium_browser_show_devtools(gsde_chromium_browser_t *browser);
 

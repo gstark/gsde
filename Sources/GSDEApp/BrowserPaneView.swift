@@ -23,6 +23,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
     private let backButton = NSButton(title: "‹", target: nil, action: nil)
     private let forwardButton = NSButton(title: "›", target: nil, action: nil)
     private let reloadButton = NSButton(title: "↻", target: nil, action: nil)
+    private let stopButton = NSButton(title: "×", target: nil, action: nil)
     private let devToolsButton = NSButton(title: "DevTools", target: nil, action: nil)
     private let backendStatusLabel = NSTextField(labelWithString: "")
     private let urlField = NSTextField(string: "")
@@ -162,6 +163,8 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
             performReload(ignoringCache: false)
         case ([.command, .shift], "r"):
             performReload(ignoringCache: true)
+        case ([.command], "."):
+            stopLoading()
         case ([.command], "["):
             goBack()
         case ([.command], "]"):
@@ -214,7 +217,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         toolbar.spacing = 6
         toolbar.distribution = .fill
 
-        [backButton, forwardButton, reloadButton, devToolsButton].forEach { button in
+        [backButton, forwardButton, reloadButton, stopButton, devToolsButton].forEach { button in
             button.bezelStyle = .rounded
             button.controlSize = .small
         }
@@ -225,6 +228,8 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         forwardButton.action = #selector(goForward)
         reloadButton.target = self
         reloadButton.action = #selector(reload)
+        stopButton.target = self
+        stopButton.action = #selector(stopLoading)
         devToolsButton.target = self
         devToolsButton.action = #selector(showDeveloperTools)
 
@@ -241,6 +246,7 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         toolbar.addArrangedSubview(backButton)
         toolbar.addArrangedSubview(forwardButton)
         toolbar.addArrangedSubview(reloadButton)
+        toolbar.addArrangedSubview(stopButton)
         toolbar.addArrangedSubview(urlField)
         toolbar.addArrangedSubview(devToolsButton)
         toolbar.addArrangedSubview(backendStatusLabel)
@@ -314,6 +320,15 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
 
     @objc private func reload() {
         performReload(ignoringCache: false)
+    }
+
+    @objc private func stopLoading() {
+        if let cefBrowser {
+            gsde_chromium_browser_stop(cefBrowser)
+        } else {
+            webView.stopLoading()
+        }
+        updateNavigationButtons()
     }
 
     private func performReload(ignoringCache: Bool) {
@@ -477,9 +492,11 @@ final class BrowserPaneView: NSView, WKNavigationDelegate {
         if let cefBrowser {
             backButton.isEnabled = gsde_chromium_browser_can_go_back(cefBrowser) != 0
             forwardButton.isEnabled = gsde_chromium_browser_can_go_forward(cefBrowser) != 0
+            stopButton.isEnabled = gsde_chromium_browser_is_loading(cefBrowser) != 0
         } else {
             backButton.isEnabled = webView.canGoBack
             forwardButton.isEnabled = webView.canGoForward
+            stopButton.isEnabled = webView.isLoading
         }
     }
 }
