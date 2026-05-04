@@ -2,12 +2,15 @@
 
 #include <dlfcn.h>
 #include <stdbool.h>
-typedef int atomic_int;
-static inline int atomic_load(const atomic_int *value) { return *value; }
-static inline int atomic_fetch_add(atomic_int *value, int increment) { int previous = *value; *value += increment; return previous; }
-static inline int atomic_fetch_sub(atomic_int *value, int decrement) { int previous = *value; *value -= decrement; return previous; }
-static inline void atomic_store(atomic_int *value, int desired) { *value = desired; }
-static inline void atomic_init(atomic_int *value, int desired) { *value = desired; }
+#include <atomic>
+#include <new>
+
+typedef std::atomic<int> atomic_int;
+static inline int atomic_load(const atomic_int *value) { return value->load(std::memory_order_seq_cst); }
+static inline int atomic_fetch_add(atomic_int *value, int increment) { return value->fetch_add(increment, std::memory_order_seq_cst); }
+static inline int atomic_fetch_sub(atomic_int *value, int decrement) { return value->fetch_sub(decrement, std::memory_order_seq_cst); }
+static inline void atomic_store(atomic_int *value, int desired) { value->store(desired, std::memory_order_seq_cst); }
+static inline void atomic_init(atomic_int *value, int desired) { value->store(desired, std::memory_order_seq_cst); }
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,8 +38,8 @@ static bool attempted_load = false;
 static bool initialized = false;
 static char status[512] = "CEF has not been initialized";
 static char last_error[512] = "No CEF errors recorded";
-static atomic_int next_browser_id = 1;
-static atomic_int live_browser_count = 0;
+static atomic_int next_browser_id{1};
+static atomic_int live_browser_count{0};
 
 #if GSDE_HAVE_CEF_HEADERS
 typedef int (*cef_execute_process_fn)(const cef_main_args_t *, cef_app_t *, void *);
@@ -958,7 +961,7 @@ static void set_cef_string(const char *utf8, cef_string_t *out) {
 }
 
 static cef_app_t global_cef_app;
-static atomic_int global_cef_app_ref_count = 1;
+static atomic_int global_cef_app_ref_count{1};
 
 static void CEF_CALLBACK gsde_app_add_ref(cef_base_ref_counted_t *base) {
     (void)base;
