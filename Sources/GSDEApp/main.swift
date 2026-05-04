@@ -624,6 +624,7 @@ final class VSCodePaneView: NSView {
     private let configSource: WorkspaceConfigSource
     private let codeServerManager: CodeServerManager
     private var startTask: Task<Void, Never>?
+    private var statusTask: Task<Void, Never>?
     private var hasStartedSession = false
     private var embeddedView: NSView?
 
@@ -643,7 +644,9 @@ final class VSCodePaneView: NSView {
         super.viewDidMoveToWindow()
         if window == nil {
             startTask?.cancel()
+            statusTask?.cancel()
             startTask = nil
+            statusTask = nil
             hasStartedSession = false
             Task { await codeServerManager.stop(paneID: paneID) }
             return
@@ -665,6 +668,7 @@ final class VSCodePaneView: NSView {
                         stateIdentifier: "vscode.\(paneID)",
                         initialURL: session.serverURL
                     ))
+                    beginMonitoringSession()
                     startTask = nil
                     return true
                 }
@@ -683,6 +687,39 @@ final class VSCodePaneView: NSView {
                 }
             }
         }
+    }
+
+    private func beginMonitoringSession() {
+        statusTask?.cancel()
+        statusTask = Task { [weak self, paneID, codeServerManager] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: 500_000_000)
+                } catch is CancellationError {
+                    return
+                } catch {
+                    return
+                }
+
+                guard case .exited(let exitCode, let diagnostics) = await codeServerManager.status(forPaneID: paneID) else {
+                    continue
+                }
+                await MainActor.run { [weak self] in
+                    guard let self, window != nil else { return }
+                    statusTask = nil
+                    showStatus(
+                        title: "VS Code pane crashed",
+                        detail: Self.crashDetail(exitCode: exitCode, diagnostics: diagnostics)
+                    )
+                }
+                return
+            }
+        }
+    }
+
+    private static func crashDetail(exitCode: Int32, diagnostics: CodeServerProcessDiagnostics) -> String {
+        let output = diagnostics.combinedOutput.isEmpty ? "no output" : diagnostics.combinedOutput
+        return "code-server exited with status \(exitCode): \(output)"
     }
 
     private func embed(_ view: NSView) {
