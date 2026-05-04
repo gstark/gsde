@@ -1,5 +1,6 @@
 .build/
 build/
+dist/
 external/ghostty/
 external/cef/
 .DS_Store
