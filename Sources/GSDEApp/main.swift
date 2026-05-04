@@ -230,10 +230,15 @@ final class ThreePaneWorkspaceView: NSView {
             "https://developer.apple.com",
             "https://chromium.org"
         ]
+        let configuredURLs = ProcessInfo.processInfo.environment["GSDE_BROWSER_URLS"]?
+            .split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty } ?? []
 
         var panes: [NSView] = [GhosttyHostView()]
         for index in 0..<browserPaneCount {
-            let url = URL(string: defaultURLs[index]) ?? URL(string: "https://example.com")!
+            let rawURL = index < configuredURLs.count ? configuredURLs[index] : defaultURLs[index]
+            let url = URL(string: rawURL) ?? URL(string: defaultURLs[index]) ?? URL(string: "https://example.com")!
             panes.append(BrowserPaneView(initialURL: url))
         }
         panes.append(GhosttyHostView())

@@ -56,7 +56,15 @@ make run-cef-two-browsers
 GSDE_BROWSER_PANES=2 make run-cef-foreground
 ```
 
-`GSDE_BROWSER_PANES` accepts 1-4 browser panes. `make app-with-chromium` packages the CEF framework and the required macOS helper app variants (`GSDE Helper`, `GSDE Helper (Renderer)`, `GSDE Helper (GPU)`, etc.) under `GSDE.app/Contents/Frameworks`.
+`GSDE_BROWSER_PANES` accepts 1-4 browser panes. Initial browser URLs can be overridden with comma-separated `GSDE_BROWSER_URLS`:
+
+```sh
+GSDE_BROWSER_PANES=2 \
+GSDE_BROWSER_URLS="https://example.com,https://www.wikipedia.org" \
+make run-cef-foreground
+```
+
+`make app-with-chromium` packages the CEF framework and the required macOS helper app variants (`GSDE Helper`, `GSDE Helper (Renderer)`, `GSDE Helper (GPU)`, etc.) under `GSDE.app/Contents/Frameworks`.
 
 CEF diagnostics are written to:
 
