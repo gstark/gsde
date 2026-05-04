@@ -675,7 +675,11 @@ final class VSCodePaneView: NSView {
                     guard let self, window != nil else { return false }
                     hasStartedSession = true
                     embed(BrowserPaneView(
-                        profile: BrowserProfileConfig(name: "vscode.\(paneID)", storageDirectory: nil, persistent: false),
+                        profile: BrowserProfileConfig(
+                            name: "vscode.\(paneID)",
+                            storageDirectory: session.launchConfiguration.stateDirectories.cefCacheDirectory,
+                            persistent: true
+                        ),
                         stateIdentifier: "vscode.\(paneID)",
                         initialURL: session.serverURL
                     ))
