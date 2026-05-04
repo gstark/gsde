@@ -637,8 +637,8 @@ static void CEF_CALLBACK gsde_on_load_end(cef_load_handler_t *self, cef_browser_
     gsde_chromium_browser_t *browser = browser_from_load_handler(self);
     browser->http_status = httpStatusCode;
     update_browser_url_from_frame(browser, frame);
-    char message[128];
-    snprintf(message, sizeof(message), "CEF browser #%d load end: HTTP %d", browser->browser_id, httpStatusCode);
+    char message[2300];
+    snprintf(message, sizeof(message), "CEF browser #%d load end: HTTP %d URL %s", browser->browser_id, httpStatusCode, browser->current_url);
     gsde_log(message);
 }
 

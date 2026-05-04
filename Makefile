@@ -13,7 +13,7 @@ CHROMIUM_HELPER_BINARY := .build/$(CONFIG)/$(CHROMIUM_HELPER_PRODUCT)
 BUILT_LIBGHOSTTY := build/libghostty/libghostty.dylib
 CEF_FRAMEWORK := external/cef/Release/Chromium Embedded Framework.framework
 
-.PHONY: build libghostty cef app app-with-ghostty app-with-chromium run run-cef run-cef-two-browsers run-cef-four-browsers run-foreground run-cef-foreground smoke-default smoke-cef smoke-cef-four smoke-cef-graceful smoke-cef-repeat verify-cef-bundle verify-cef verify reset-state clean
+.PHONY: build libghostty cef app app-with-ghostty app-with-chromium run run-cef run-cef-two-browsers run-cef-four-browsers run-foreground run-cef-foreground smoke-default smoke-cef smoke-cef-custom-urls smoke-cef-four smoke-cef-graceful smoke-cef-repeat verify-cef-bundle verify-cef verify reset-state clean
 
 build:
 	swift build -c $(CONFIG)
@@ -64,6 +64,9 @@ smoke-default: app
 smoke-cef: app-with-chromium
 	./scripts/smoke-test-cef.sh
 
+smoke-cef-custom-urls: app-with-chromium
+	GSDE_BROWSER_PANES=2 GSDE_BROWSER_URLS="https://example.com,https://www.iana.org/domains/reserved" GSDE_EXPECT_URL_SUBSTRINGS="example.com,iana.org" ./scripts/smoke-test-cef.sh
+
 smoke-cef-four: app-with-chromium
 	GSDE_BROWSER_PANES=4 GSDE_SMOKE_WAIT_SECONDS=60 ./scripts/smoke-test-cef.sh
 
@@ -76,7 +79,7 @@ smoke-cef-repeat: app-with-chromium
 verify-cef-bundle: app-with-chromium
 	./scripts/verify-cef-bundle.sh "$(BUNDLE_DIR)"
 
-verify-cef: verify-cef-bundle smoke-cef smoke-cef-four smoke-cef-graceful smoke-cef-repeat
+verify-cef: verify-cef-bundle smoke-cef smoke-cef-custom-urls smoke-cef-four smoke-cef-graceful smoke-cef-repeat
 
 verify: smoke-default verify-cef
 

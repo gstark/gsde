@@ -43,6 +43,7 @@ Current verified CEF paths:
 ```text
 make smoke-default       # default launch verifies CEF stays off
 make smoke-cef           # 2 browser panes load HTTP 200
+make smoke-cef-custom-urls # configured per-pane URLs load HTTP 200
 make smoke-cef-four      # 4 browser panes load HTTP 200
 make smoke-cef-graceful  # browser panes close, CEF shuts down, helpers exit
 make smoke-cef-repeat    # repeated graceful launch/shutdown

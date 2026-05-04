@@ -32,6 +32,20 @@ if [[ -z "${GSDE_BROWSER_URLS:-}" ]]; then
 fi
 export GSDE_BROWSER_URLS
 
+verify_expected_url_substrings() {
+  [[ -z "${GSDE_EXPECT_URL_SUBSTRINGS:-}" ]] && return 0
+  IFS=',' read -r -a expected_substrings <<< "$GSDE_EXPECT_URL_SUBSTRINGS"
+  for expected in "${expected_substrings[@]}"; do
+    expected="$(echo "$expected" | xargs)"
+    [[ -z "$expected" ]] && continue
+    if ! grep -E 'CEF browser #[0-9]+ load end: HTTP 200 URL ' "$LOG" | grep -Fq "$expected"; then
+      echo "Expected successful CEF load URL containing '$expected'" >&2
+      cat "$LOG" >&2
+      return 1
+    fi
+  done
+}
+
 GSDE_ENABLE_CEF=1 GSDE_BROWSER_PANES="$BROWSER_PANES" "$APP" >/tmp/gsde-cef-smoke.out 2>/tmp/gsde-cef-smoke.err &
 app_pid=$!
 
@@ -47,6 +61,7 @@ for _ in $(seq 1 "$WAIT_SECONDS"); do
     created_count=$(grep -Ec 'CEF browser #[0-9]+ created with native view' "$LOG" || true)
     loaded_browser_count=$(grep -E 'CEF browser #[0-9]+ load end: HTTP 200' "$LOG" | sed -E 's/.*CEF browser #([0-9]+) load end.*/\1/' | sort -u | wc -l | tr -d ' ' || true)
     if [[ "$created_count" -ge "$BROWSER_PANES" && "$loaded_browser_count" -ge "$BROWSER_PANES" ]]; then
+      verify_expected_url_substrings
       if [[ "${GSDE_SMOKE_GRACEFUL_QUIT:-0}" == "1" ]]; then
         osascript -e 'tell application "GSDE" to quit' >/dev/null 2>&1 || kill "$app_pid" >/dev/null 2>&1 || true
         for _ in $(seq 1 30); do
