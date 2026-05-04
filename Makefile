@@ -13,7 +13,7 @@ CHROMIUM_HELPER_BINARY := .build/$(CONFIG)/$(CHROMIUM_HELPER_PRODUCT)
 BUILT_LIBGHOSTTY := build/libghostty/libghostty.dylib
 CEF_FRAMEWORK := external/cef/Release/Chromium Embedded Framework.framework
 
-.PHONY: build libghostty cef app app-with-ghostty app-with-chromium run run-cef run-foreground run-cef-foreground clean
+.PHONY: build libghostty cef app app-with-ghostty app-with-chromium run run-cef run-cef-two-browsers run-foreground run-cef-foreground clean
 
 build:
 	swift build -c $(CONFIG)
@@ -45,12 +45,16 @@ run-cef: app-with-chromium
 	rm -f "$$HOME/Library/Application Support/GSDE/Chromium/SingletonLock" "$$HOME/Library/Application Support/GSDE/Chromium/SingletonCookie" "$$HOME/Library/Application Support/GSDE/Chromium/SingletonSocket"
 	open -n --env GSDE_ENABLE_CEF=1 $(BUNDLE_DIR)
 
+run-cef-two-browsers: app-with-chromium
+	rm -f "$$HOME/Library/Application Support/GSDE/Chromium/SingletonLock" "$$HOME/Library/Application Support/GSDE/Chromium/SingletonCookie" "$$HOME/Library/Application Support/GSDE/Chromium/SingletonSocket"
+	open -n --env GSDE_ENABLE_CEF=1 --env GSDE_BROWSER_PANES=2 $(BUNDLE_DIR)
+
 run-foreground: app
 	$(MACOS_DIR)/$(APP_NAME)
 
 run-cef-foreground: app-with-chromium
 	rm -f "$$HOME/Library/Application Support/GSDE/Chromium/SingletonLock" "$$HOME/Library/Application Support/GSDE/Chromium/SingletonCookie" "$$HOME/Library/Application Support/GSDE/Chromium/SingletonSocket"
-	GSDE_ENABLE_CEF=1 $(MACOS_DIR)/$(APP_NAME)
+	GSDE_ENABLE_CEF=1 GSDE_BROWSER_PANES=$${GSDE_BROWSER_PANES:-1} $(MACOS_DIR)/$(APP_NAME)
 
 clean:
 	rm -rf .build build

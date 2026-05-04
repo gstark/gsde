@@ -48,7 +48,15 @@ This places CEF under `external/cef`. See `docs/chromium-cef-integration.md` for
 make run-cef
 ```
 
-`make app-with-chromium` packages the CEF framework and the required macOS helper app variants (`GSDE Helper`, `GSDE Helper (Renderer)`, `GSDE Helper (GPU)`, etc.) under `GSDE.app/Contents/Frameworks`.
+To test multiple Chromium browser instances in one window:
+
+```sh
+make run-cef-two-browsers
+# or
+GSDE_BROWSER_PANES=2 make run-cef-foreground
+```
+
+`GSDE_BROWSER_PANES` accepts 1-4 browser panes. `make app-with-chromium` packages the CEF framework and the required macOS helper app variants (`GSDE Helper`, `GSDE Helper (Renderer)`, `GSDE Helper (GPU)`, etc.) under `GSDE.app/Contents/Frameworks`.
 
 CEF diagnostics are written to:
 

@@ -206,20 +206,38 @@ final class GhosttyHostView: NSView {
 }
 
 final class ThreePaneWorkspaceView: NSView {
-    private let panes: [NSView] = [
-        GhosttyHostView(),
-        BrowserPaneView(initialURL: URL(string: "https://example.com")!),
-        GhosttyHostView()
-    ]
+    private let panes: [NSView]
 
     override init(frame frameRect: NSRect) {
+        self.panes = Self.makePanes()
         super.init(frame: frameRect)
         commonInit()
     }
 
     required init?(coder: NSCoder) {
+        self.panes = Self.makePanes()
         super.init(coder: coder)
         commonInit()
+    }
+
+    private static func makePanes() -> [NSView] {
+        let requestedBrowserPanes = ProcessInfo.processInfo.environment["GSDE_BROWSER_PANES"]
+            .flatMap(Int.init) ?? 1
+        let browserPaneCount = min(max(requestedBrowserPanes, 1), 4)
+        let defaultURLs = [
+            "https://example.com",
+            "https://www.wikipedia.org",
+            "https://developer.apple.com",
+            "https://chromium.org"
+        ]
+
+        var panes: [NSView] = [GhosttyHostView()]
+        for index in 0..<browserPaneCount {
+            let url = URL(string: defaultURLs[index]) ?? URL(string: "https://example.com")!
+            panes.append(BrowserPaneView(initialURL: url))
+        }
+        panes.append(GhosttyHostView())
+        return panes
     }
 
     private func commonInit() {
