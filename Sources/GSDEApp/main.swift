@@ -3,6 +3,8 @@ import ChromiumStub
 import GhosttyShim
 
 final class GhosttyHostView: NSView {
+    static weak var activePane: GhosttyHostView?
+
     private var host: OpaquePointer?
     private var statusLabel: NSTextField?
     private var displayLink: Timer?
@@ -48,6 +50,7 @@ final class GhosttyHostView: NSView {
     }
 
     override func becomeFirstResponder() -> Bool {
+        Self.activePane = self
         gsde_ghostty_host_focus(host, true)
         return true
     }
@@ -58,6 +61,7 @@ final class GhosttyHostView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        Self.activePane = self
         window?.makeFirstResponder(self)
         gsde_ghostty_host_focus(host, true)
         super.mouseDown(with: event)
@@ -206,22 +210,19 @@ final class GhosttyHostView: NSView {
 }
 
 final class ThreePaneWorkspaceView: NSSplitView {
-    private let panes: [NSView]
     private var didSetInitialDividerPositions = false
     private var splitAutosaveName: NSSplitView.AutosaveName {
-        NSSplitView.AutosaveName("GSDE.WorkspaceSplit.\(panes.count)")
+        NSSplitView.AutosaveName("GSDE.WorkspaceSplit.\(arrangedSubviews.count)")
     }
 
     override init(frame frameRect: NSRect) {
-        self.panes = Self.makePanes()
         super.init(frame: frameRect)
-        commonInit()
+        commonInit(initialPanes: Self.makePanes())
     }
 
     required init?(coder: NSCoder) {
-        self.panes = Self.makePanes()
         super.init(coder: coder)
-        commonInit()
+        commonInit(initialPanes: Self.makePanes())
     }
 
     private static func makePanes() -> [NSView] {
@@ -259,7 +260,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
         return panes
     }
 
-    private func commonInit() {
+    private func commonInit(initialPanes: [NSView]) {
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
         isVertical = true
@@ -267,28 +268,81 @@ final class ThreePaneWorkspaceView: NSSplitView {
         autoresizesSubviews = true
         autosaveName = splitAutosaveName
 
-        panes.forEach { pane in
-            addArrangedSubview(pane)
-            setHoldingPriority(.defaultLow, forSubviewAt: arrangedSubviews.count - 1)
-        }
+        initialPanes.forEach { addPane($0) }
     }
 
     override func layout() {
         super.layout()
-        guard !didSetInitialDividerPositions, bounds.width > 0, panes.count > 1 else { return }
+        guard !didSetInitialDividerPositions, bounds.width > 0, arrangedSubviews.count > 1 else { return }
         didSetInitialDividerPositions = true
         guard !hasSavedDividerPositions else { return }
-        for index in 1..<panes.count {
-            setPosition(bounds.width * CGFloat(index) / CGFloat(panes.count), ofDividerAt: index - 1)
-        }
+        distributePanesEvenly()
+    }
+
+    func addTerminalPane() {
+        addPane(GhosttyHostView())
+        distributePanesEvenly()
+    }
+
+    func addBrowserPane() {
+        let stateIdentifier = nextDynamicBrowserIdentifier()
+        let profile = BrowserProfileConfig(
+            name: stateIdentifier,
+            storageDirectory: FileManager.default.urls(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask
+            ).first?.appendingPathComponent("GSDE/Chromium/Profiles/\(stateIdentifier)", isDirectory: true),
+            persistent: true
+        )
+        addPane(BrowserPaneView(profile: profile, stateIdentifier: stateIdentifier, initialURL: URL(string: "https://example.com")!))
+        distributePanesEvenly()
+    }
+
+    func closeActivePane() {
+        guard arrangedSubviews.count > 1, let pane = activeArrangedPane else { return }
+        removeArrangedSubview(pane)
+        pane.removeFromSuperview()
+        distributePanesEvenly()
     }
 
     func resetDividerPositions() {
-        guard bounds.width > 0, panes.count > 1 else { return }
+        guard bounds.width > 0, arrangedSubviews.count > 1 else { return }
         UserDefaults.standard.removeObject(forKey: "NSSplitView Subview Frames \(splitAutosaveName)")
-        for index in 1..<panes.count {
-            setPosition(bounds.width * CGFloat(index) / CGFloat(panes.count), ofDividerAt: index - 1)
+        distributePanesEvenly()
+    }
+
+    private func addPane(_ pane: NSView) {
+        addArrangedSubview(pane)
+        setHoldingPriority(.defaultLow, forSubviewAt: arrangedSubviews.count - 1)
+        autosaveName = splitAutosaveName
+    }
+
+    private func distributePanesEvenly() {
+        guard bounds.width > 0, arrangedSubviews.count > 1 else { return }
+        autosaveName = splitAutosaveName
+        for index in 1..<arrangedSubviews.count {
+            setPosition(bounds.width * CGFloat(index) / CGFloat(arrangedSubviews.count), ofDividerAt: index - 1)
         }
+    }
+
+    private var activeArrangedPane: NSView? {
+        if let browserPane = BrowserPaneView.activePane,
+           arrangedSubviews.contains(where: { browserPane.isDescendant(of: $0) }) {
+            return arrangedSubviews.first { browserPane.isDescendant(of: $0) }
+        }
+        if let terminalPane = GhosttyHostView.activePane,
+           arrangedSubviews.contains(where: { terminalPane.isDescendant(of: $0) }) {
+            return arrangedSubviews.first { terminalPane.isDescendant(of: $0) }
+        }
+        guard let responder = window?.firstResponder as? NSView else { return arrangedSubviews.last }
+        return arrangedSubviews.first { responder === $0 || responder.isDescendant(of: $0) } ?? arrangedSubviews.last
+    }
+
+    private func nextDynamicBrowserIdentifier() -> String {
+        let key = "GSDE.BrowserPane.nextDynamicIndex"
+        let index = UserDefaults.standard.integer(forKey: key)
+        UserDefaults.standard.set(index + 1, forKey: key)
+        return "browser.dynamic.\(index)"
     }
 
     private var hasSavedDividerPositions: Bool {
@@ -417,6 +471,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         appMenuItem.submenu = appMenu
 
+        let workspaceMenuItem = NSMenuItem()
+        workspaceMenuItem.title = "Workspace"
+        mainMenu.addItem(workspaceMenuItem)
+        let workspaceMenu = NSMenu(title: "Workspace")
+        workspaceMenuItem.submenu = workspaceMenu
+        addMenuItem("New Browser Pane", #selector(newBrowserPane(_:)), "n", to: workspaceMenu)
+        addMenuItem("New Terminal Pane", #selector(newTerminalPane(_:)), "n", modifiers: [.command, .shift], to: workspaceMenu)
+        addMenuItem("Close Active Pane", #selector(closeActivePane(_:)), "w", to: workspaceMenu)
+        workspaceMenu.addItem(.separator())
+        addMenuItem("Reset Window and Pane Layout", #selector(resetWindowAndPaneLayout(_:)), "", modifiers: [], to: workspaceMenu)
+
         let browserMenuItem = NSMenuItem()
         browserMenuItem.title = "Browser"
         mainMenu.addItem(browserMenuItem)
@@ -464,6 +529,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.target = self
         item.keyEquivalentModifierMask = modifiers
         menu.addItem(item)
+    }
+
+    @objc private func newBrowserPane(_ sender: Any?) {
+        (window?.contentView as? ThreePaneWorkspaceView)?.addBrowserPane()
+    }
+
+    @objc private func newTerminalPane(_ sender: Any?) {
+        (window?.contentView as? ThreePaneWorkspaceView)?.addTerminalPane()
+    }
+
+    @objc private func closeActivePane(_ sender: Any?) {
+        (window?.contentView as? ThreePaneWorkspaceView)?.closeActivePane()
     }
 
     @objc private func resetWindowAndPaneLayout(_ sender: Any?) {
