@@ -7,6 +7,7 @@ public enum VSCodePaneLaunchError: Error, Equatable, CustomStringConvertible, Lo
     case invalidPort(UInt16)
     case emptyPassword
     case invalidBindHost(String)
+    case bundledCodeServerResourcesMissing
     case bundledCodeServerMissing(URL)
     case bundledCodeServerNotExecutable(URL)
 
@@ -24,6 +25,8 @@ public enum VSCodePaneLaunchError: Error, Equatable, CustomStringConvertible, Lo
             return "code-server password must not be empty"
         case .invalidBindHost(let host):
             return "code-server bind host must be a non-empty host name or IP address; received \(host.debugDescription)"
+        case .bundledCodeServerResourcesMissing:
+            return "Unable to locate app resources for bundled code-server"
         case .bundledCodeServerMissing(let url):
             return "Bundled code-server executable is missing at \(url.path)"
         case .bundledCodeServerNotExecutable(let url):
@@ -35,10 +38,10 @@ public enum VSCodePaneLaunchError: Error, Equatable, CustomStringConvertible, Lo
 public struct CodeServerBundleResolver: Sendable {
     public static let relativeExecutablePath = "code-server/bin/code-server"
 
-    private let resourcesDirectory: URL
+    private let resourcesDirectory: URL?
 
     public init(resourcesDirectory: URL? = Bundle.main.resourceURL) {
-        self.resourcesDirectory = resourcesDirectory ?? URL(fileURLWithPath: ".", isDirectory: true)
+        self.resourcesDirectory = resourcesDirectory
     }
 
     public init(appBundleURL: URL) {
@@ -48,6 +51,9 @@ public struct CodeServerBundleResolver: Sendable {
     }
 
     public func executableURL(fileManager: FileManager = .default) throws -> URL {
+        guard let resourcesDirectory else {
+            throw VSCodePaneLaunchError.bundledCodeServerResourcesMissing
+        }
         let executableURL = resourcesDirectory.appendingPathComponent(Self.relativeExecutablePath, isDirectory: false).standardizedFileURL
         var isDirectory = ObjCBool(false)
         guard fileManager.fileExists(atPath: executableURL.path, isDirectory: &isDirectory), !isDirectory.boolValue else {

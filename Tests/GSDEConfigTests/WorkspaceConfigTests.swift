@@ -188,6 +188,15 @@ struct WorkspaceConfigTests {
         ])
     }
 
+    @Test("bundled code-server resolver reports missing app resources")
+    func bundledCodeServerResolverReportsMissingAppResources() throws {
+        let resolver = CodeServerBundleResolver(resourcesDirectory: nil)
+
+        #expect(throws: VSCodePaneLaunchError.bundledCodeServerResourcesMissing) {
+            try resolver.executableURL()
+        }
+    }
+
     @Test("bundled code-server resolver requires an executable in app resources")
     func bundledCodeServerResolverRequiresExecutableInAppResources() throws {
         let appBundle = try temporaryDirectory().appendingPathComponent("GSDE.app", isDirectory: true)
