@@ -502,6 +502,8 @@ final class ThreePaneWorkspaceView: NSSplitView {
               !descriptors.isEmpty
         else { return nil }
 
+        cleanupAbandonedDynamicBrowserProfiles(retaining: Set(descriptors.compactMap(\.stateIdentifier)))
+
         let panes = descriptors.compactMap { descriptor -> NSView? in
             switch descriptor.kind {
             case .terminal:
@@ -535,6 +537,25 @@ final class ThreePaneWorkspaceView: NSSplitView {
         // Backward compatibility with the original persisted format, which was
         // just an array of pane descriptors without an envelope/version.
         return try? decoder.decode([PaneDescriptor].self, from: data)
+    }
+
+    private static func cleanupAbandonedDynamicBrowserProfiles(retaining retainedIdentifiers: Set<String>) {
+        guard let profilesDirectory = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first?.appendingPathComponent("GSDE/Chromium/Profiles", isDirectory: true),
+              let profileURLs = try? FileManager.default.contentsOfDirectory(
+                at: profilesDirectory,
+                includingPropertiesForKeys: nil
+              )
+        else { return }
+
+        for profileURL in profileURLs {
+            let identifier = profileURL.lastPathComponent
+            guard identifier.hasPrefix("browser.dynamic."), !retainedIdentifiers.contains(identifier) else { continue }
+            try? FileManager.default.removeItem(at: profileURL)
+            UserDefaults.standard.removeObject(forKey: "GSDE.BrowserPane.\(identifier).url")
+        }
     }
 
     private func commonInit(initialPanes: [NSView]) {
