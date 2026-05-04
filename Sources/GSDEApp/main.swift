@@ -362,6 +362,14 @@ final class ThreePaneWorkspaceView: NSSplitView {
         focusPane(offset: -1)
     }
 
+    func moveActivePaneLeft() {
+        moveActivePane(offset: -1)
+    }
+
+    func moveActivePaneRight() {
+        moveActivePane(offset: 1)
+    }
+
     func closeActivePane() {
         guard canCloseActivePane, let pane = activeArrangedPane else { return }
         removeArrangedSubview(pane)
@@ -421,11 +429,31 @@ final class ThreePaneWorkspaceView: NSSplitView {
         }
     }
 
+    private func moveActivePane(offset: Int) {
+        guard arrangedSubviews.count > 1,
+              let pane = activeArrangedPane,
+              let currentIndex = arrangedSubviews.firstIndex(of: pane)
+        else { return }
+        let targetIndex = currentIndex + offset
+        guard arrangedSubviews.indices.contains(targetIndex) else { return }
+        removeArrangedSubview(pane)
+        insertArrangedSubview(pane, at: targetIndex)
+        setHoldingPriority(.defaultLow, forSubviewAt: targetIndex)
+        persistPaneLayout()
+        distributePanesEvenly()
+        focusPane(at: targetIndex)
+    }
+
     private func focusPane(offset: Int) {
         guard !arrangedSubviews.isEmpty else { return }
         let currentIndex = activeArrangedPane.flatMap { arrangedSubviews.firstIndex(of: $0) } ?? 0
         let nextIndex = (currentIndex + offset + arrangedSubviews.count) % arrangedSubviews.count
-        let pane = arrangedSubviews[nextIndex]
+        focusPane(at: nextIndex)
+    }
+
+    private func focusPane(at index: Int) {
+        guard arrangedSubviews.indices.contains(index) else { return }
+        let pane = arrangedSubviews[index]
         if let browserPane = pane as? BrowserPaneView {
             window?.makeFirstResponder(browserPane)
         } else if let terminalPane = pane as? GhosttyHostView {
@@ -594,6 +622,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         workspaceMenu.addItem(.separator())
         addMenuItem("Focus Next Pane", #selector(focusNextPane(_:)), "}", to: workspaceMenu)
         addMenuItem("Focus Previous Pane", #selector(focusPreviousPane(_:)), "{", to: workspaceMenu)
+        addMenuItem("Move Pane Left", #selector(moveActivePaneLeft(_:)), "{", modifiers: [.command, .shift], to: workspaceMenu)
+        addMenuItem("Move Pane Right", #selector(moveActivePaneRight(_:)), "}", modifiers: [.command, .shift], to: workspaceMenu)
         workspaceMenu.addItem(.separator())
         addMenuItem("Reset Window and Pane Layout", #selector(resetWindowAndPaneLayout(_:)), "", modifiers: [], to: workspaceMenu)
 
@@ -664,6 +694,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc private func focusPreviousPane(_ sender: Any?) {
         (window?.contentView as? ThreePaneWorkspaceView)?.focusPreviousPane()
+    }
+
+    @objc private func moveActivePaneLeft(_ sender: Any?) {
+        (window?.contentView as? ThreePaneWorkspaceView)?.moveActivePaneLeft()
+    }
+
+    @objc private func moveActivePaneRight(_ sender: Any?) {
+        (window?.contentView as? ThreePaneWorkspaceView)?.moveActivePaneRight()
     }
 
     @objc private func resetWindowAndPaneLayout(_ sender: Any?) {
