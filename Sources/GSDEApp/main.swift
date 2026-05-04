@@ -205,8 +205,9 @@ final class GhosttyHostView: NSView {
     }
 }
 
-final class ThreePaneWorkspaceView: NSView {
+final class ThreePaneWorkspaceView: NSSplitView {
     private let panes: [NSView]
+    private var didSetInitialDividerPositions = false
 
     override init(frame frameRect: NSRect) {
         self.panes = Self.makePanes()
@@ -248,25 +249,23 @@ final class ThreePaneWorkspaceView: NSView {
     private func commonInit() {
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
+        isVertical = true
+        dividerStyle = .thin
+        autoresizesSubviews = true
 
         panes.forEach { pane in
-            pane.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(pane)
+            addArrangedSubview(pane)
+            setHoldingPriority(.defaultLow, forSubviewAt: arrangedSubviews.count - 1)
         }
+    }
 
-        var constraints: [NSLayoutConstraint] = []
-        for (index, pane) in panes.enumerated() {
-            constraints.append(pane.topAnchor.constraint(equalTo: topAnchor))
-            constraints.append(pane.bottomAnchor.constraint(equalTo: bottomAnchor))
-            if index == 0 {
-                constraints.append(pane.leadingAnchor.constraint(equalTo: leadingAnchor))
-            } else {
-                constraints.append(pane.leadingAnchor.constraint(equalTo: panes[index - 1].trailingAnchor))
-                constraints.append(pane.widthAnchor.constraint(equalTo: panes[0].widthAnchor))
-            }
+    override func layout() {
+        super.layout()
+        guard !didSetInitialDividerPositions, bounds.width > 0, panes.count > 1 else { return }
+        didSetInitialDividerPositions = true
+        for index in 1..<panes.count {
+            setPosition(bounds.width * CGFloat(index) / CGFloat(panes.count), ofDividerAt: index - 1)
         }
-        constraints.append(panes[panes.count - 1].trailingAnchor.constraint(equalTo: trailingAnchor))
-        NSLayoutConstraint.activate(constraints)
     }
 }
 
