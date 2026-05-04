@@ -1,9 +1,9 @@
 class Gsde < Formula
   desc "Full-screen macOS development environment with terminal and browser panes"
   homepage "https://github.com/gstark/gsde"
-  version "0.1.7"
+  version "0.1.8"
   url "https://github.com/gstark/gsde/releases/download/v#{version}/GSDE-#{version}.zip"
-  sha256 "d2c9021a3ef8cecf29d221404b983fc7062ed2b3d621e870e6fbc56a76c0c1dd"
+  sha256 "72113a809e49f2c4b5a49bad14ba98c0e0063aeff854b8f8a9789c8f06a5a04a"
 
   depends_on macos: :ventura
 
