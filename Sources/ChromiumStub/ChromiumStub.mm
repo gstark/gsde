@@ -1006,6 +1006,53 @@ private:
     cef_string_t value_;
 };
 
+template <typename T>
+class ScopedCefRef {
+public:
+    explicit ScopedCefRef(T *ptr) : ptr_(ptr) {}
+    ~ScopedCefRef() { reset(nullptr); }
+
+    ScopedCefRef(const ScopedCefRef &) = delete;
+    ScopedCefRef &operator=(const ScopedCefRef &) = delete;
+
+    T *get() const { return ptr_; }
+    T *operator->() const { return ptr_; }
+    explicit operator bool() const { return ptr_ != nullptr; }
+
+    T *release() {
+        T *ptr = ptr_;
+        ptr_ = nullptr;
+        return ptr;
+    }
+
+    void reset(T *ptr) {
+        if (ptr_ && ptr_->base.release) {
+            ptr_->base.release((cef_base_ref_counted_t *)ptr_);
+        }
+        ptr_ = ptr;
+    }
+
+private:
+    T *ptr_;
+};
+
+class ScopedCefUserFreeString {
+public:
+    explicit ScopedCefUserFreeString(cef_string_userfree_t value) : value_(value) {}
+    ~ScopedCefUserFreeString() {
+        if (value_ && cef_string_userfree_utf16_free_ptr) cef_string_userfree_utf16_free_ptr(value_);
+    }
+
+    ScopedCefUserFreeString(const ScopedCefUserFreeString &) = delete;
+    ScopedCefUserFreeString &operator=(const ScopedCefUserFreeString &) = delete;
+
+    cef_string_userfree_t get() const { return value_; }
+    explicit operator bool() const { return value_ != nullptr; }
+
+private:
+    cef_string_userfree_t value_;
+};
+
 static cef_app_t global_cef_app;
 static atomic_int global_cef_app_ref_count{1};
 
@@ -1120,9 +1167,9 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
         cef_request_context_settings_t context_settings;
         memset(&context_settings, 0, sizeof(context_settings));
         context_settings.size = sizeof(context_settings);
-        set_cef_string(cache_path, &context_settings.cache_path);
+        ScopedCefString context_cache_path(cache_path);
+        context_settings.cache_path = *context_cache_path.get();
         browser->request_context = cef_request_context_create_context_ptr(&context_settings, NULL);
-        cef_string_utf16_clear_ptr(&context_settings.cache_path);
     }
 
     cef_window_info_t window_info;
@@ -1231,11 +1278,10 @@ void gsde_chromium_browser_load_url(gsde_chromium_browser_t *browser, const char
 #if GSDE_HAVE_CEF_HEADERS
     if (!browser || !browser->browser || !url) return;
     snprintf(browser->current_url, sizeof(browser->current_url), "%s", url);
-    cef_frame_t *frame = main_frame_for_browser(browser);
+    ScopedCefRef<cef_frame_t> frame(main_frame_for_browser(browser));
     if (!frame) return;
     ScopedCefString cef_url(url);
-    frame->load_url(frame, cef_url.get());
-    if (frame->base.release) frame->base.release((cef_base_ref_counted_t *)frame);
+    frame->load_url(frame.get(), cef_url.get());
 #else
     (void)browser; (void)url;
 #endif
@@ -1377,10 +1423,9 @@ static cef_frame_t *main_frame_for_browser(gsde_chromium_browser_t *browser) {
 
 #if GSDE_HAVE_CEF_HEADERS
 static void with_main_frame(gsde_chromium_browser_t *browser, void (*action)(cef_frame_t *frame)) {
-    cef_frame_t *frame = main_frame_for_browser(browser);
+    ScopedCefRef<cef_frame_t> frame(main_frame_for_browser(browser));
     if (!frame) return;
-    action(frame);
-    if (frame->base.release) frame->base.release((cef_base_ref_counted_t *)frame);
+    action(frame.get());
 }
 
 static void frame_cut(cef_frame_t *frame) { if (frame->cut) frame->cut(frame); }
