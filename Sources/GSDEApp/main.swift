@@ -619,12 +619,87 @@ final class PaneRuntimeErrorView: NSView {
 }
 
 @MainActor
+final class VSCodePaneView: NSView {
+    private let paneID: String
+    private let configSource: WorkspaceConfigSource
+    private let codeServerManager: CodeServerManager
+    private var startTask: Task<Void, Never>?
+    private var embeddedView: NSView?
+
+    init(paneID: String, configSource: WorkspaceConfigSource, codeServerManager: CodeServerManager) {
+        self.paneID = paneID
+        self.configSource = configSource
+        self.codeServerManager = codeServerManager
+        super.init(frame: .zero)
+        showStatus(title: "Starting VS Code…", detail: "Launching code-server for pane \(paneID)")
+    }
+
+    required init?(coder: NSCoder) {
+        preconditionFailure("VSCodePaneView requires a pane ID and code-server manager")
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil {
+            startTask?.cancel()
+            startTask = nil
+            Task { await codeServerManager.stop(paneID: paneID) }
+            return
+        }
+        startCodeServerIfNeeded()
+    }
+
+    private func startCodeServerIfNeeded() {
+        guard startTask == nil else { return }
+        startTask = Task { [paneID, configSource, codeServerManager] in
+            do {
+                let session = try await codeServerManager.start(CodeServerStartRequest(paneID: paneID, configSource: configSource))
+                try Task.checkCancellation()
+                await MainActor.run {
+                    embed(BrowserPaneView(
+                        profile: BrowserProfileConfig(name: "vscode.\(paneID)", storageDirectory: nil, persistent: false),
+                        stateIdentifier: "vscode.\(paneID)",
+                        initialURL: session.serverURL
+                    ))
+                }
+            } catch is CancellationError {
+                await codeServerManager.stop(paneID: paneID)
+            } catch {
+                await MainActor.run {
+                    showStatus(title: "VS Code pane failed", detail: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func embed(_ view: NSView) {
+        embeddedView?.removeFromSuperview()
+        embeddedView = view
+        view.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(view)
+        NSLayoutConstraint.activate([
+            view.leadingAnchor.constraint(equalTo: leadingAnchor),
+            view.trailingAnchor.constraint(equalTo: trailingAnchor),
+            view.topAnchor.constraint(equalTo: topAnchor),
+            view.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+    }
+
+    private func showStatus(title: String, detail: String) {
+        embed(PaneRuntimeErrorView(title: title, detail: detail))
+    }
+}
+
+@MainActor
 final class ConfiguredPaneRegistry {
     private let definitionsByID: [String: PaneDefinition]
+    private let configSource: WorkspaceConfigSource
+    private let codeServerManager = CodeServerManager()
     private var viewsByPaneID: [String: NSView] = [:]
 
-    init(config: WorkspaceConfig) {
+    init(config: WorkspaceConfig, configSource: WorkspaceConfigSource) {
         self.definitionsByID = Dictionary(uniqueKeysWithValues: config.panes.map { ($0.id, $0) })
+        self.configSource = configSource
     }
 
     func view(for paneID: String) -> NSView {
@@ -661,7 +736,7 @@ final class ConfiguredPaneRegistry {
             )
             contentView = BrowserPaneView(profile: profile, stateIdentifier: definition.id, initialURL: url)
         case .vscode:
-            contentView = makeVSCodePaneView()
+            contentView = VSCodePaneView(paneID: definition.id, configSource: configSource, codeServerManager: codeServerManager)
         }
 
         guard !definition.border.isZero || !definition.padding.isZero else { return contentView }
@@ -673,17 +748,6 @@ final class ConfiguredPaneRegistry {
         return PaneBoxView(contentView: contentView, border: definition.border, padding: definition.padding)
     }
 
-    private func makeVSCodePaneView() -> NSView {
-        do {
-            _ = try CodeServerBundleResolver().executableURL()
-            return NSView()
-        } catch {
-            return PaneRuntimeErrorView(
-                title: "VS Code pane unavailable",
-                detail: error.localizedDescription
-            )
-        }
-    }
 }
 
 final class MosaicWorkspaceView: NSView {
@@ -1035,7 +1099,7 @@ final class ThreePaneWorkspaceView: NSSplitView {
 
     private static func makeConfiguredPanes(from config: WorkspaceConfig) -> [NSView] {
         guard let startupLayout = config.startupMosaicLayout else { return [GhosttyHostView()] }
-        let registry = ConfiguredPaneRegistry(config: config)
+        let registry = ConfiguredPaneRegistry(config: config, configSource: .builtIn)
         let configuredPanes = registry.views(for: startupLayout)
         return configuredPanes.isEmpty ? [GhosttyHostView()] : configuredPanes
     }
@@ -1505,7 +1569,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if let configURL = loadedConfig.source.url {
             logConfig("loaded TOML workspace config from \(configURL.path); using Mosaic workspace layout \(startupLayout.id)")
         }
-        let registry = ConfiguredPaneRegistry(config: loadedConfig.config)
+        let registry = ConfiguredPaneRegistry(config: loadedConfig.config, configSource: loadedConfig.source)
         return MosaicWorkspaceView(
             frame: frame,
             config: loadedConfig.config,
@@ -1912,7 +1976,7 @@ if ProcessInfo.processInfo.environment["GSDE_VALIDATE_CONFIG"] != nil {
         fatalError("GSDE config has no startup layout to verify")
     }
     let frame = NSRect(x: 0, y: 0, width: parts[0], height: parts[1])
-    let paneRegistry = ConfiguredPaneRegistry(config: loadedConfig.config)
+    let paneRegistry = ConfiguredPaneRegistry(config: loadedConfig.config, configSource: loadedConfig.source)
     let workspaceView = MosaicWorkspaceView(
         frame: frame,
         config: loadedConfig.config,
