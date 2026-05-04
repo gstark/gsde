@@ -51,15 +51,25 @@ jobs:
           GSDE_ADHOC_SIGN: '1'
         run: make libghostty release-adhoc
 
-      - name: Compute checksum
+      - name: Compute checksum and release size
         id: checksum
         shell: bash
         run: |
           archive=$(cat dist/latest-release.txt)
           sha=$(shasum -a 256 "$archive" | awk '{print $1}')
+          size_bytes=$(stat -f%z "$archive")
+          size_mib=$(python3 - <<PY
+          size = int("$size_bytes")
+          print(f"{size / 1024 / 1024:.2f}")
+          PY
+          )
           echo "archive=$archive" >> "$GITHUB_OUTPUT"
           echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+          echo "size_bytes=$size_bytes" >> "$GITHUB_OUTPUT"
+          echo "size_mib=$size_mib" >> "$GITHUB_OUTPUT"
           printf '%s  %s\n' "$sha" "$(basename "$archive")" > "$archive.sha256"
+          echo "Release archive: $archive"
+          echo "Release archive size: ${size_bytes} bytes (${size_mib} MiB)"
 
       - name: Upload GitHub release
         shell: bash
@@ -68,6 +78,8 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           ARCHIVE: ${{ steps.checksum.outputs.archive }}
           SHA256: ${{ steps.checksum.outputs.sha256 }}
+          SIZE_BYTES: ${{ steps.checksum.outputs.size_bytes }}
+          SIZE_MIB: ${{ steps.checksum.outputs.size_mib }}
         run: |
           retry() {
             local attempt=1
@@ -84,15 +96,18 @@ jobs:
             done
           }
 
+          notes="SHA-256: \`${SHA256}\`
+          Size: ${SIZE_BYTES} bytes (${SIZE_MIB} MiB)"
+
           tag="v${VERSION}"
           if gh release view "$tag" >/dev/null 2>&1; then
             retry gh release edit "$tag" \
               --title "GSDE ${tag}" \
-              --notes "SHA-256: \`${SHA256}\`"
+              --notes "$notes"
           else
             retry gh release create "$tag" \
               --title "GSDE ${tag}" \
-              --notes "SHA-256: \`${SHA256}\`"
+              --notes "$notes"
           fi
           retry gh release upload "$tag" "$ARCHIVE" "$ARCHIVE.sha256" --clobber
 
