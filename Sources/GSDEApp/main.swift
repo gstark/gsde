@@ -333,7 +333,7 @@ final class GhosttyHostView: NSView, @preconcurrency NSTextInputClient {
         guard Self.activePane === self else { return }
         let title = host.map { String(cString: gsde_ghostty_host_title($0)) } ?? "Terminal"
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        window?.title = cleanTitle.isEmpty ? "GSDE — Terminal" : "GSDE — \(cleanTitle)"
+        window?.title = cleanTitle.isEmpty ? WorkspaceDisplayTitle.title : "\(WorkspaceDisplayTitle.title) — \(cleanTitle)"
     }
 
     private func setActiveAppearance(_ active: Bool) {
@@ -876,6 +876,22 @@ final class MosaicWorkspaceView: NSView {
     }
 }
 
+@MainActor
+enum WorkspaceDisplayTitle {
+    private static let fallback = "GSDE"
+    private static var configuredTitle: String?
+
+    static var title: String {
+        configuredTitle ?? fallback
+    }
+
+    static func configure(_ title: String?) {
+        let cleanTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        configuredTitle = cleanTitle?.isEmpty == false ? cleanTitle : nil
+        NSApp.dockTile.badgeLabel = configuredTitle
+    }
+}
+
 enum WorkspaceStateScope {
     private static let prefix = ProcessInfo.processInfo.environment["GSDE_STATE_SCOPE"]?
         .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1276,6 +1292,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         installLayoutSwitcherShortcutMonitor()
 
         let loadedConfig = WorkspaceConfigLoader().load()
+        WorkspaceDisplayTitle.configure(loadedConfig.config.title)
         initializeChromiumIfAvailable(rootCachePath: Self.chromiumRootDirectory(for: loadedConfig.source))
 
         let frame = Self.frameCoveringAllDisplays()
@@ -1287,7 +1304,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             backing: .buffered,
             defer: false
         )
-        window.title = "GSDE"
+        window.title = WorkspaceDisplayTitle.title
         window.hasShadow = false
         window.level = .normal
         window.contentView = contentView

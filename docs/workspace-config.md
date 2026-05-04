@@ -37,12 +37,14 @@ If a file is found but invalid, GSDE reports a diagnostic on stderr and uses the
 
 ```toml
 version = 1
+title = "Dashboard"
 startup_layout = "dev"
 layout_flash_enabled = true
 layout_flash_duration = 1.4
 ```
 
 - `version` is required and must currently be `1`.
+- `title` is optional. When present, GSDE uses it for the window title and Dock/App Switcher badge.
 - `startup_layout` is required and must match one `[[layouts]]` `id`.
 - `layout_flash_enabled` is optional and defaults to `true`. When enabled, direct previous/next layout switching briefly flashes the new layout name centered on every screen.
 - `layout_flash_duration` is optional and defaults to `1.4` seconds.

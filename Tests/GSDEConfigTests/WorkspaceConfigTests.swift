@@ -11,6 +11,7 @@ struct WorkspaceConfigTests {
         let configURL = directory.appendingPathComponent("config.toml")
         try """
         version = 1
+        title = "Dashboard"
         startup_layout = "work"
 
         [[panes]]
@@ -32,6 +33,7 @@ struct WorkspaceConfigTests {
         #expect(result.diagnostics.isEmpty)
         #expect(result.source == .environment(configURL))
         #expect(result.config.version == 1)
+        #expect(result.config.title == "Dashboard")
         #expect(result.config.startupLayout == "work")
         #expect(result.config.startupPaneDefinitions.map(\.id) == ["term", "docs"])
         #expect(result.config.startupPaneDefinitions.last?.url?.absoluteString == "https://developer.apple.com")

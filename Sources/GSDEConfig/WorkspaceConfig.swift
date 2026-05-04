@@ -5,6 +5,7 @@ public struct WorkspaceConfig: Equatable, Sendable {
     public static let currentVersion = 1
 
     public let version: Int
+    public let title: String?
     public let panes: [PaneDefinition]
     public let layouts: [LayoutDefinition]
     public let validatedLayouts: [ValidatedMosaicLayout]
@@ -15,6 +16,7 @@ public struct WorkspaceConfig: Equatable, Sendable {
 
     public init(
         version: Int,
+        title: String? = nil,
         panes: [PaneDefinition],
         layouts: [LayoutDefinition],
         validatedLayouts: [ValidatedMosaicLayout],
@@ -24,6 +26,7 @@ public struct WorkspaceConfig: Equatable, Sendable {
         paneKindDefaults: [PaneDefinition.Kind: PaneBoxStyle] = [:]
     ) {
         self.version = version
+        self.title = title
         self.panes = panes
         self.layouts = layouts
         self.validatedLayouts = validatedLayouts
@@ -35,6 +38,7 @@ public struct WorkspaceConfig: Equatable, Sendable {
 
     public static let builtIn = WorkspaceConfig(
         version: currentVersion,
+        title: nil,
         panes: [
             PaneDefinition(id: "terminal.main", kind: .terminal, url: nil, profile: nil),
             PaneDefinition(id: "browser.main", kind: .browser, url: URL(string: "https://example.com")!, profile: nil),
@@ -381,6 +385,7 @@ public final class WorkspaceConfigLoader {
 
         return WorkspaceConfig(
             version: config.version,
+            title: config.title,
             panes: panes,
             layouts: config.layouts,
             validatedLayouts: config.validatedLayouts,
@@ -507,7 +512,7 @@ struct WorkspaceConfigTOMLParser {
 
             switch table {
             case .root:
-                try insert(key: String(key), value: String(value), into: &root, line: lineNumber, table: "root", allowedKeys: ["version", "startup_layout", "layout_flash_enabled", "layout_flash_duration"])
+                try insert(key: String(key), value: String(value), into: &root, line: lineNumber, table: "root", allowedKeys: ["version", "title", "startup_layout", "layout_flash_enabled", "layout_flash_duration"])
             case .paneDefault(let kind):
                 var fields = paneDefaultTables[kind] ?? [:]
                 try insert(key: String(key), value: String(value), into: &fields, line: lineNumber, table: "pane_defaults.\(kind.rawValue)", allowedKeys: ["border", "padding"])
@@ -521,6 +526,10 @@ struct WorkspaceConfigTOMLParser {
 
         let version = try requiredInt(root["version"], table: "root", field: "version")
         guard version == WorkspaceConfig.currentVersion else { throw WorkspaceConfigParseError.unsupportedVersion(version) }
+        let title = try parseString(root["title"], field: "title")
+        if let title, title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw WorkspaceConfigParseError.invalidValue(field: "title", value: title)
+        }
 
         let paneKindDefaults = try paneDefaultTables.mapValues { fields in
             try parsePaneBoxStyle(fields, table: "pane_defaults")
@@ -545,6 +554,7 @@ struct WorkspaceConfigTOMLParser {
         let validatedLayouts = try validate(panes: panes, layouts: layouts, startupLayout: startupLayout)
         return WorkspaceConfig(
             version: version,
+            title: title,
             panes: panes,
             layouts: layouts,
             validatedLayouts: validatedLayouts,

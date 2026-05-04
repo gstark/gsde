@@ -854,11 +854,11 @@ final class BrowserPaneView: NSView {
         guard Self.activePane === self else { return }
         let cleanTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !cleanTitle.isEmpty {
-            window?.title = "GSDE — \(cleanTitle)"
+            window?.title = "\(WorkspaceDisplayTitle.title) — \(cleanTitle)"
         } else if !urlField.stringValue.isEmpty {
-            window?.title = "GSDE — \(urlField.stringValue)"
+            window?.title = "\(WorkspaceDisplayTitle.title) — \(urlField.stringValue)"
         } else {
-            window?.title = "GSDE"
+            window?.title = WorkspaceDisplayTitle.title
         }
     }
 
