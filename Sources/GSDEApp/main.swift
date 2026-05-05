@@ -772,6 +772,8 @@ final class VSCodePaneView: NSView {
             zoomOut()
         case "0":
             zoomReset()
+        case "v":
+            pasteClipboard()
         default:
             return false
         }
@@ -975,6 +977,12 @@ final class VSCodePaneView: NSView {
                 self.hideOverlay()
                 self.hideOverlayTask = nil
             }
+        }
+    }
+
+    private func pasteClipboard() {
+        if let cefBrowser {
+            gsde_chromium_browser_paste(cefBrowser)
         }
     }
 
