@@ -34,10 +34,11 @@ Use this checklist before shipping the first VS Code pane UI/CEF integration. It
    TOML
    ```
 
-3. Launch GSDE from that project so pane state is written under the project-local `.config/gsde` directory:
+3. Validate and launch GSDE through the packaged `gsde` shim from that project so `GSDE_PROJECT_DIR` is set, the project-local config is discovered, and pane state is written under the project-local `.config/gsde` directory:
 
    ```sh
-   (cd "$tmp_project" && GSDE_CONFIG="$tmp_project/.config/gsde/config.toml" /path/to/GSDE.app/Contents/MacOS/GSDE)
+   (cd "$tmp_project" && /path/to/GSDE.app/Contents/Resources/bin/gsde --validate)
+   (cd "$tmp_project" && /path/to/GSDE.app/Contents/Resources/bin/gsde)
    ```
 
 ## Acceptance checklist
