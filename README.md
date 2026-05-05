@@ -126,7 +126,7 @@ rm -f "$(brew --prefix)/bin/gsde"
 brew reinstall --cask gsde
 ```
 
-The cask installs `GSDE.app` and exposes the `gsde` CLI on `PATH`.
+The cask installs `GSDE.app`, exposes the `gsde` CLI on `PATH`, and disables macOS press-and-hold accents for GSDE (`defaults write personal.gsde.app ApplePressAndHoldEnabled -bool false`) so Vim-style key repeat works.
 
 
 Developer ID signing and notarization helpers are available without opening Xcode:

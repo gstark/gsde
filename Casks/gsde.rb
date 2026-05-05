@@ -12,6 +12,11 @@ cask "gsde" do
   app "GSDE.app"
   binary "GSDE.app/Contents/Resources/bin/gsde"
 
+  postflight do
+    system_command "/usr/bin/defaults",
+                   args: ["write", "personal.gsde.app", "ApplePressAndHoldEnabled", "-bool", "false"]
+  end
+
   caveats <<~EOS
     If you installed the earlier formula-based GSDE package, remove it first:
       brew uninstall --formula gsde 2>/dev/null || true

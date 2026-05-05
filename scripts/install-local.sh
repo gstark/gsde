@@ -26,3 +26,6 @@ ditto "${BUILD_APP}" "${APP_PATH}"
 echo "Clearing quarantine attribute if present…"
 xattr -dr com.apple.quarantine "${APP_PATH}" 2>/dev/null || true
 
+echo "Enabling key repeat for ${APP_NAME}…"
+defaults write personal.gsde.app ApplePressAndHoldEnabled -bool false
+

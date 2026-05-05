@@ -594,6 +594,7 @@ final class VSCodePaneView: NSView {
     private var cefBrowser: OpaquePointer?
     private weak var cefNativeView: NSView?
     private var cefStatusTimer: Timer?
+    private var keyCommandMonitor: Any?
     private var mouseFocusMonitor: Any?
     private var activePaneObserver: NSObjectProtocol?
     private var startTask: Task<Void, Never>?
@@ -630,6 +631,7 @@ final class VSCodePaneView: NSView {
             return
         }
         installActivePaneObserverIfNeeded()
+        installKeyCommandMonitorIfNeeded()
         installMouseFocusMonitorIfNeeded()
         if Self.activePane == nil, BrowserPaneView.activePane == nil, GhosttyHostView.activePane == nil {
             markActivePane()
@@ -721,6 +723,10 @@ final class VSCodePaneView: NSView {
         if Self.activePane === self {
             Self.activePane = nil
         }
+        if let keyCommandMonitor {
+            NSEvent.removeMonitor(keyCommandMonitor)
+            self.keyCommandMonitor = nil
+        }
         if let mouseFocusMonitor {
             NSEvent.removeMonitor(mouseFocusMonitor)
             self.mouseFocusMonitor = nil
@@ -734,6 +740,37 @@ final class VSCodePaneView: NSView {
             self.cefBrowser = nil
             cefNativeView = nil
         }
+    }
+
+    private func installKeyCommandMonitorIfNeeded() {
+        guard keyCommandMonitor == nil else { return }
+        keyCommandMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self,
+                  self.window === event.window,
+                  Self.activePane === self,
+                  self.handleVSCodeKeyCommand(event)
+            else { return event }
+            return nil
+        }
+    }
+
+    private func handleVSCodeKeyCommand(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags == [.command],
+              let characters = event.charactersIgnoringModifiers?.lowercased()
+        else { return false }
+
+        switch characters {
+        case "+", "=":
+            zoomIn()
+        case "-":
+            zoomOut()
+        case "0":
+            zoomReset()
+        default:
+            return false
+        }
+        return true
     }
 
     private func installMouseFocusMonitorIfNeeded() {
@@ -920,6 +957,24 @@ final class VSCodePaneView: NSView {
         let httpStatus = gsde_chromium_browser_http_status(cefBrowser)
         if httpStatus < 0, httpStatus != Self.cefErrorAborted {
             showFailure(title: "VS Code page failed", detail: "CEF reported load error \(httpStatus) for \(currentServerURL?.absoluteString ?? "the VS Code URL")")
+        }
+    }
+
+    private func zoomIn() {
+        if let cefBrowser {
+            gsde_chromium_browser_zoom_in(cefBrowser)
+        }
+    }
+
+    private func zoomOut() {
+        if let cefBrowser {
+            gsde_chromium_browser_zoom_out(cefBrowser)
+        }
+    }
+
+    private func zoomReset() {
+        if let cefBrowser {
+            gsde_chromium_browser_zoom_reset(cefBrowser)
         }
     }
 
