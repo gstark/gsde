@@ -1974,14 +1974,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private static func chromiumRootDirectory(for source: WorkspaceConfigSource) -> URL {
         // CEF 120+ requires every persistent CefRequestContext cache path to sit under
-        // CefSettings.root_cache_path. VS Code pane cache paths are grouped here, so use
-        // that group as the project/config root instead of its parent chromium directory.
+        // CefSettings.root_cache_path. Keep the root at the shared chromium directory so
+        // VS Code pane caches and any other Chromium profiles can coexist below it.
         if let projectDirectory = nonEmptyEnvironmentDirectory(named: "GSDE_PROJECT_DIR") {
             return projectDirectory
                 .appendingPathComponent(".config", isDirectory: true)
                 .appendingPathComponent("gsde", isDirectory: true)
                 .appendingPathComponent("chromium", isDirectory: true)
-                .appendingPathComponent("vscode-panes", isDirectory: true)
                 .standardizedFileURL
         }
 
@@ -1989,7 +1988,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return configURL
                 .deletingLastPathComponent()
                 .appendingPathComponent("chromium", isDirectory: true)
-                .appendingPathComponent("vscode-panes", isDirectory: true)
                 .standardizedFileURL
         }
 
