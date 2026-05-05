@@ -96,7 +96,7 @@ public struct VSCodePaneStateDirectories: Equatable, Sendable {
     public func createDirectories(fileManager: FileManager = .default) throws {
         try fileManager.createDirectory(at: codeServerUserDataDirectory, withIntermediateDirectories: true)
         try fileManager.createDirectory(at: codeServerExtensionsDirectory, withIntermediateDirectories: true)
-        try fileManager.createDirectory(at: cefCacheDirectory, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: cefCacheDirectory.deletingLastPathComponent(), withIntermediateDirectories: true)
     }
 }
 

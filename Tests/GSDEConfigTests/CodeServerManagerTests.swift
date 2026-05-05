@@ -36,7 +36,8 @@ struct CodeServerManagerTests {
         #expect(launched.arguments.prefix(2) == ["--bind-addr", "127.0.0.1:\(session.serverURL.port!)"])
         #expect(FileManager.default.fileExists(atPath: launched.stateDirectories.codeServerUserDataDirectory.path))
         #expect(FileManager.default.fileExists(atPath: launched.stateDirectories.codeServerExtensionsDirectory.path))
-        #expect(FileManager.default.fileExists(atPath: launched.stateDirectories.cefCacheDirectory.path))
+        #expect(FileManager.default.fileExists(atPath: launched.stateDirectories.cefCacheDirectory.deletingLastPathComponent().path))
+        #expect(!FileManager.default.fileExists(atPath: launched.stateDirectories.cefCacheDirectory.path))
         #expect(readiness.readyURLs == [session.serverURL])
     }
 

@@ -738,7 +738,7 @@ final class BrowserPaneView: NSView {
         browserContainer.layoutSubtreeIfNeeded()
         let width = Int32(max(1, browserContainer.bounds.width))
         let height = Int32(max(1, browserContainer.bounds.height))
-        let cefCachePath = profile.persistent ? (profile.storageDirectory?.path ?? "") : ""
+        let cefCachePath = profile.persistent ? profile.storageDirectory.map(CEFPath.canonicalPath(for:)) ?? "" : ""
         let browser = "about:blank".withCString { initialURLPointer in
             cefCachePath.withCString { cachePathPointer in
                 gsde_chromium_browser_create(

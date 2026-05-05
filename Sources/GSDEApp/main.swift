@@ -868,7 +868,7 @@ final class VSCodePaneView: NSView {
         browserContainer.layoutSubtreeIfNeeded()
         let width = Int32(max(1, browserContainer.bounds.width))
         let height = Int32(max(1, browserContainer.bounds.height))
-        let cachePath = cacheDirectory.path
+        let cachePath = CEFPath.canonicalPath(for: cacheDirectory)
         let browser = serverURL.absoluteString.withCString { initialURLPointer in
             cachePath.withCString { cachePathPointer in
                 gsde_chromium_browser_create(
@@ -1909,11 +1909,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func initializeChromiumIfAvailable(rootCachePath: URL) {
         guard gsde_chromium_cef_available() != 0 else { return }
 
-        let globalCachePath = rootCachePath.appendingPathComponent("global", isDirectory: true)
-        try? FileManager.default.createDirectory(at: globalCachePath, withIntermediateDirectories: true)
-
-        let initialized = rootCachePath.path.withCString { rootCache in
-            globalCachePath.path.withCString { profileCache in
+        try? FileManager.default.createDirectory(at: rootCachePath, withIntermediateDirectories: true)
+        let rootCache = CEFPath.canonicalPath(for: rootCachePath)
+        // Leave CefSettings.cache_path empty so every persistent browser must provide an explicit
+        // CefRequestContext cache path. This prevents accidentally sharing the global profile.
+        let initialized = rootCache.withCString { rootCache in
+            "".withCString { profileCache in
                 "".withCString { helper in
                     gsde_chromium_initialize(rootCache, profileCache, helper)
                 }
@@ -1972,20 +1973,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     private static func chromiumRootDirectory(for source: WorkspaceConfigSource) -> URL {
+        if let projectDirectory = nonEmptyEnvironmentDirectory(named: "GSDE_PROJECT_DIR") {
+            return projectDirectory
+                .appendingPathComponent(".config", isDirectory: true)
+                .appendingPathComponent("gsde", isDirectory: true)
+                .appendingPathComponent("chromium", isDirectory: true)
+                .standardizedFileURL
+        }
+
         if let configURL = source.url {
             return configURL
                 .deletingLastPathComponent()
                 .appendingPathComponent("chromium", isDirectory: true)
+                .standardizedFileURL
         }
 
         guard let appSupportDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             return URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
                 .appendingPathComponent("GSDE", isDirectory: true)
                 .appendingPathComponent("Chromium", isDirectory: true)
+                .standardizedFileURL
         }
         return appSupportDirectory
             .appendingPathComponent("GSDE", isDirectory: true)
             .appendingPathComponent("Chromium", isDirectory: true)
+            .standardizedFileURL
+    }
+
+    private static func nonEmptyEnvironmentDirectory(named name: String) -> URL? {
+        guard let value = ProcessInfo.processInfo.environment[name]?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+        return URL(fileURLWithPath: (value as NSString).expandingTildeInPath, isDirectory: true).standardizedFileURL
     }
 
     private static func logConfig(_ message: String) {

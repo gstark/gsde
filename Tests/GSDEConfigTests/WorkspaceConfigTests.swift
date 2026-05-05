@@ -325,7 +325,8 @@ struct WorkspaceConfigTests {
 
         #expect(FileManager.default.fileExists(atPath: state.codeServerUserDataDirectory.path))
         #expect(FileManager.default.fileExists(atPath: state.codeServerExtensionsDirectory.path))
-        #expect(FileManager.default.fileExists(atPath: state.cefCacheDirectory.path))
+        #expect(FileManager.default.fileExists(atPath: state.cefCacheDirectory.deletingLastPathComponent().path))
+        #expect(!FileManager.default.fileExists(atPath: state.cefCacheDirectory.path))
     }
 
     @Test("vscode panes reject browser and terminal-only fields")

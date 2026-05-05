@@ -1316,6 +1316,19 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
             delete browser;
             return NULL;
         }
+        if (browser->request_context->get_cache_path) {
+            cef_string_userfree_t actual_cache_path = browser->request_context->get_cache_path(browser->request_context);
+            char actual_cache_path_buffer[4096];
+            copy_cef_string_to_buffer(actual_cache_path, actual_cache_path_buffer, sizeof(actual_cache_path_buffer));
+            if (cef_string_userfree_utf16_free_ptr) cef_string_userfree_utf16_free_ptr(actual_cache_path);
+            if (actual_cache_path_buffer[0] == '\0') {
+                char error_message[1024];
+                snprintf(error_message, sizeof(error_message), "CEF request context is incognito after cache creation request for cache=%s", normalized_cache_path.c_str());
+                set_last_error(error_message);
+                delete browser;
+                return NULL;
+            }
+        }
     }
 
     cef_window_info_t window_info;
