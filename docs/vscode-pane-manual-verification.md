@@ -56,10 +56,10 @@ Record pass/fail, date, GSDE build, macOS version, and notes for each item.
 
 ## Completion boundary
 
-The VS Code pane first-version UI/CEF behavior is complete only when every checklist item above has a recorded passing result on a packaged app bundle that includes CEF and code-server. Any failed item must either be fixed before release or linked to a tracked follow-up issue with the release decision explicitly documented.
+The VS Code pane first-version UI/CEF behavior is complete only when every checklist item above has a recorded passing result on a packaged app bundle that includes CEF and code-server. Any unchecked, unrun, or failed item must either be completed or linked to a tracked follow-up issue with the release decision explicitly documented.
 
 ## Verification log
 
 | Date | GSDE build | macOS | Result | Notes |
 | --- | --- | --- | --- | --- |
-| 2026-05-04 | 0.1.0 (build 175, git 4da04b9) | 26.4.1 | Partial fail | Agent validated the two-pane config with `gsde --validate`, launched the packaged app, observed two VS Code CEF browsers load `HTTP 200` at local code-server login URLs, and observed separate per-pane state directories. Interactive visual/focus/shortcut/persistence checks were not completed. Normal quit during the run ended in `Segmentation fault: 11`, so cleanup acceptance is not passing yet; tracked as GSDE-18. |
+| 2026-05-04 | 0.1.0 (build 175, git 4da04b9) | 26.4.1 | Partial fail | Agent validated the two-pane config with `gsde --validate`, launched the packaged app, observed two VS Code CEF browsers load `HTTP 200` at local code-server login URLs, and observed separate per-pane state directories. Interactive visual/focus/shortcut/persistence checks were not completed; tracked as GSDE-19. Normal quit during the run ended in `Segmentation fault: 11`, so cleanup acceptance is not passing yet; tracked as GSDE-18. |
