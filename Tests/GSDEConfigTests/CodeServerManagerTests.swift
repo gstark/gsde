@@ -4,7 +4,7 @@ import Testing
 
 @Suite("Code-server manager")
 struct CodeServerManagerTests {
-    @Test("starts one managed process per pane with random localhost port and generated password")
+    @Test("starts one managed process per pane with random localhost port and no authentication")
     func startsManagedProcessWithLaunchParameters() async throws {
         let project = try temporaryDirectory()
         let configURL = project.appendingPathComponent(".config/gsde/config.toml")
@@ -29,10 +29,9 @@ struct CodeServerManagerTests {
         #expect(session.serverURL.host == "127.0.0.1")
         #expect(session.serverURL.port != nil)
         #expect(session.serverURL.port != 0)
-        #expect(session.password.count >= 24)
         #expect(launched.executableURL == executableURL)
         #expect(launched.serverURL == session.serverURL)
-        #expect(launched.environment == ["PASSWORD": session.password])
+        #expect(launched.environment == [:])
         #expect(launched.arguments.prefix(2) == ["--bind-addr", "127.0.0.1:\(session.serverURL.port!)"])
         #expect(FileManager.default.fileExists(atPath: launched.stateDirectories.codeServerUserDataDirectory.path))
         #expect(FileManager.default.fileExists(atPath: launched.stateDirectories.codeServerExtensionsDirectory.path))
@@ -67,7 +66,6 @@ struct CodeServerManagerTests {
         ))
 
         #expect(left.serverURL != right.serverURL)
-        #expect(left.password != right.password)
         #expect(left.launchConfiguration.stateDirectories.paneStateDirectory != right.launchConfiguration.stateDirectories.paneStateDirectory)
         #expect(left.launchConfiguration.stateDirectories.cefCacheDirectory != right.launchConfiguration.stateDirectories.cefCacheDirectory)
         #expect(launcher.launchedConfigurations.map(\.stateDirectories.paneID) == ["editor.left", "editor.right"])
@@ -201,7 +199,7 @@ struct CodeServerManagerTests {
         done
         host="${bind%:*}"
         port="${bind##*:}"
-        echo "fake code-server password length ${#PASSWORD}"
+        echo "fake code-server auth disabled"
         HOST="$host" PORT="$port" exec python3 -u - <<'PY'
         import http.server
         import os
@@ -234,7 +232,7 @@ struct CodeServerManagerTests {
 
         #expect((response as? HTTPURLResponse)?.statusCode == 200)
         #expect(String(decoding: data, as: UTF8.self) == "ok")
-        #expect(await manager.diagnostics(forPaneID: "editor")?.stdout.contains("fake code-server password length") == true)
+        #expect(await manager.diagnostics(forPaneID: "editor")?.stdout.contains("fake code-server auth disabled") == true)
         await manager.stop(paneID: "editor")
         #expect(await manager.status(forPaneID: "editor") == nil)
     }

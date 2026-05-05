@@ -186,21 +186,21 @@ struct WorkspaceConfigTests {
             executableURL: executableURL,
             paneID: "editor",
             configSource: .projectDefault(configURL),
-            port: 49152,
-            password: "generated-password"
+            port: 49152
         )
 
         let paneRoot = project.appendingPathComponent(".config/gsde/panes/editor", isDirectory: true)
         #expect(launch.executableURL == executableURL)
         #expect(launch.serverURL.absoluteString == "http://127.0.0.1:49152/")
-        #expect(launch.environment == ["PASSWORD": "generated-password"])
+        #expect(launch.environment == [:])
         #expect(launch.arguments == [
             "--bind-addr", "127.0.0.1:49152",
-            "--auth", "password",
+            "--auth", "none",
             "--user-data-dir", paneRoot.appendingPathComponent("code-server/user-data", isDirectory: true).path,
             "--extensions-dir", paneRoot.appendingPathComponent("code-server/extensions", isDirectory: true).path,
             "--disable-telemetry",
             "--disable-update-check",
+            "--disable-workspace-trust",
             project.path
         ])
     }
@@ -250,7 +250,6 @@ struct WorkspaceConfigTests {
                 paneID: "editor",
                 configSource: .projectDefault(project.appendingPathComponent(".config/gsde/config.toml")),
                 port: 49152,
-                password: "secret",
                 bundleResolver: CodeServerBundleResolver(appBundleURL: appBundle)
             )
 
@@ -264,31 +263,25 @@ struct WorkspaceConfigTests {
         let builder = CodeServerLaunchBuilder(stateResolver: VSCodePaneStateResolver(environment: [:]))
 
         #expect(throws: VSCodePaneLaunchError.invalidPort(0)) {
-            try builder.configuration(executableURL: executableURL, paneID: "editor", configSource: .environment(configURL), port: 0, password: "secret")
-        }
-        #expect(throws: VSCodePaneLaunchError.emptyPassword) {
-            try builder.configuration(executableURL: executableURL, paneID: "editor", configSource: .environment(configURL), port: 3000, password: "")
-        }
-        #expect(throws: VSCodePaneLaunchError.emptyPassword) {
-            try builder.configuration(executableURL: executableURL, paneID: "editor", configSource: .environment(configURL), port: 3000, password: " \n\t")
+            try builder.configuration(executableURL: executableURL, paneID: "editor", configSource: .environment(configURL), port: 0)
         }
         #expect(throws: VSCodePaneLaunchError.emptyPaneID) {
-            try builder.configuration(executableURL: executableURL, paneID: " ", configSource: .environment(configURL), port: 3000, password: "secret")
+            try builder.configuration(executableURL: executableURL, paneID: " ", configSource: .environment(configURL), port: 3000)
         }
         #expect(throws: VSCodePaneLaunchError.missingConfigFile) {
-            try builder.configuration(executableURL: executableURL, paneID: "editor", configSource: .builtIn, port: 3000, password: "secret")
+            try builder.configuration(executableURL: executableURL, paneID: "editor", configSource: .builtIn, port: 3000)
         }
         #expect(throws: VSCodePaneLaunchError.invalidBindHost("127.0.0.1/invalid")) {
             try CodeServerLaunchBuilder(bindHost: "127.0.0.1/invalid", stateResolver: VSCodePaneStateResolver(environment: [:]))
-                .configuration(executableURL: executableURL, paneID: "editor", configSource: .environment(configURL), port: 3000, password: "secret")
+                .configuration(executableURL: executableURL, paneID: "editor", configSource: .environment(configURL), port: 3000)
         }
         #expect(throws: VSCodePaneLaunchError.invalidBindHost("127.0.0.1:3000")) {
             try CodeServerLaunchBuilder(bindHost: "127.0.0.1:3000", stateResolver: VSCodePaneStateResolver(environment: [:]))
-                .configuration(executableURL: executableURL, paneID: "editor", configSource: .environment(configURL), port: 3000, password: "secret")
+                .configuration(executableURL: executableURL, paneID: "editor", configSource: .environment(configURL), port: 3000)
         }
         #expect(throws: VSCodePaneLaunchError.invalidBindHost("not:ipv6:host")) {
             try CodeServerLaunchBuilder(bindHost: "not:ipv6:host", stateResolver: VSCodePaneStateResolver(environment: [:]))
-                .configuration(executableURL: executableURL, paneID: "editor", configSource: .environment(configURL), port: 3000, password: "secret")
+                .configuration(executableURL: executableURL, paneID: "editor", configSource: .environment(configURL), port: 3000)
         }
     }
 
@@ -305,8 +298,7 @@ struct WorkspaceConfigTests {
             executableURL: URL(fileURLWithPath: "/bin/code-server"),
             paneID: "editor",
             configSource: .projectDefault(configURL),
-            port: 3000,
-            password: "secret"
+            port: 3000
         )
 
         #expect(launch.serverURL.absoluteString == "http://[::1]:3000/")

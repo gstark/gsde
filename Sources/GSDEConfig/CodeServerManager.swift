@@ -1,6 +1,5 @@
 import Darwin
 import Foundation
-import Security
 
 public enum CodeServerOutputStream: String, Sendable {
     case stdout
@@ -24,7 +23,6 @@ public struct CodeServerProcessDiagnostics: Equatable, Sendable {
 public enum CodeServerManagerError: Error, Equatable, CustomStringConvertible, LocalizedError, Sendable {
     case paneAlreadyRunning(String)
     case randomPortUnavailable(Int32)
-    case tokenGenerationFailed(Int32)
     case processLaunchFailed(String)
     case processExitedBeforeReady(paneID: String, exitCode: Int32, diagnostics: CodeServerProcessDiagnostics)
     case readinessTimedOut(paneID: String, url: URL, diagnostics: CodeServerProcessDiagnostics)
@@ -37,8 +35,6 @@ public enum CodeServerManagerError: Error, Equatable, CustomStringConvertible, L
             return "code-server is already running for pane \(paneID)"
         case .randomPortUnavailable(let errnoCode):
             return "Unable to reserve a random localhost port: \(String(cString: strerror(errnoCode)))"
-        case .tokenGenerationFailed(let status):
-            return "Unable to generate code-server password token; SecRandomCopyBytes returned \(status)"
         case .processLaunchFailed(let message):
             return "Unable to launch code-server: \(message)"
         case .processExitedBeforeReady(let paneID, let exitCode, let diagnostics):
@@ -73,7 +69,6 @@ public struct CodeServerStartRequest: Sendable {
 public struct ManagedCodeServerSession: Equatable, Sendable {
     public let paneID: String
     public let serverURL: URL
-    public let password: String
     public let launchConfiguration: CodeServerLaunchConfiguration
     public let diagnostics: CodeServerProcessDiagnostics
 }
@@ -249,7 +244,6 @@ public actor CodeServerManager {
         let handle: any CodeServerProcessHandle
         let launchConfiguration: CodeServerLaunchConfiguration
         let port: UInt16
-        let password: String
         let outputBuffer: CodeServerOutputBuffer
     }
 
@@ -297,14 +291,12 @@ public actor CodeServerManager {
             }
         }
 
-        let password = try Self.generatePassword()
         let executableURL = try request.executableURL ?? bundleResolver.executableURL()
         let configuration = try launchBuilder.configuration(
             executableURL: executableURL,
             paneID: request.paneID,
             configSource: request.configSource,
-            port: port,
-            password: password
+            port: port
         )
         try configuration.stateDirectories.createDirectories()
 
@@ -322,7 +314,6 @@ public actor CodeServerManager {
             handle: handle,
             launchConfiguration: configuration,
             port: port,
-            password: password,
             outputBuffer: outputBuffer
         )
         portReservationTransferredToRunningProcess = true
@@ -358,7 +349,6 @@ public actor CodeServerManager {
         return ManagedCodeServerSession(
             paneID: request.paneID,
             serverURL: configuration.serverURL,
-            password: password,
             launchConfiguration: configuration,
             diagnostics: outputBuffer.diagnostics
         )
@@ -474,16 +464,6 @@ public actor CodeServerManager {
         }
         guard nameResult == 0 else { throw CodeServerManagerError.randomPortUnavailable(errno) }
         return UInt16(bigEndian: boundAddress.sin_port)
-    }
-
-    private static func generatePassword(byteCount: Int = 24) throws -> String {
-        var bytes = [UInt8](repeating: 0, count: byteCount)
-        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        guard status == errSecSuccess else { throw CodeServerManagerError.tokenGenerationFailed(status) }
-        return Data(bytes).base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
     }
 }
 

@@ -5,7 +5,6 @@ public enum VSCodePaneLaunchError: Error, Equatable, CustomStringConvertible, Lo
     case missingConfigFile
     case emptyPaneID
     case invalidPort(UInt16)
-    case emptyPassword
     case invalidBindHost(String)
     case bundledCodeServerResourcesMissing
     case bundledCodeServerMissing(URL)
@@ -21,8 +20,6 @@ public enum VSCodePaneLaunchError: Error, Equatable, CustomStringConvertible, Lo
             return "VS Code pane ID must not be empty"
         case .invalidPort(let port):
             return "code-server port must be non-zero; received \(port)"
-        case .emptyPassword:
-            return "code-server password must not be empty"
         case .invalidBindHost(let host):
             return "code-server bind host must be a non-empty host name or IP address; received \(host.debugDescription)"
         case .bundledCodeServerResourcesMissing:
@@ -193,15 +190,13 @@ public struct CodeServerLaunchBuilder: Sendable {
         paneID: String,
         configSource: WorkspaceConfigSource,
         port: UInt16,
-        password: String,
         bundleResolver: CodeServerBundleResolver = CodeServerBundleResolver()
     ) throws -> CodeServerLaunchConfiguration {
         try configuration(
             executableURL: bundleResolver.executableURL(),
             paneID: paneID,
             configSource: configSource,
-            port: port,
-            password: password
+            port: port
         )
     }
 
@@ -209,31 +204,28 @@ public struct CodeServerLaunchBuilder: Sendable {
         executableURL: URL,
         paneID: String,
         configSource: WorkspaceConfigSource,
-        port: UInt16,
-        password: String
+        port: UInt16
     ) throws -> CodeServerLaunchConfiguration {
         guard port != 0 else { throw VSCodePaneLaunchError.invalidPort(port) }
-        guard !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw VSCodePaneLaunchError.emptyPassword
-        }
 
         let stateDirectories = try stateResolver.directories(paneID: paneID, configSource: configSource)
         let normalizedBindHost = try Self.normalizedHost(bindHost)
         let bindAddress = Self.bindAddress(host: normalizedBindHost, port: port)
         let arguments = [
             "--bind-addr", bindAddress,
-            "--auth", "password",
+            "--auth", "none",
             "--user-data-dir", stateDirectories.codeServerUserDataDirectory.path,
             "--extensions-dir", stateDirectories.codeServerExtensionsDirectory.path,
             "--disable-telemetry",
             "--disable-update-check",
+            "--disable-workspace-trust",
             stateDirectories.workspaceFolder.path
         ]
         let serverURL = try Self.serverURL(host: normalizedBindHost, port: port)
         return CodeServerLaunchConfiguration(
             executableURL: executableURL,
             arguments: arguments,
-            environment: ["PASSWORD": password],
+            environment: [:],
             serverURL: serverURL,
             stateDirectories: stateDirectories
         )
