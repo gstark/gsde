@@ -1861,6 +1861,55 @@ final class ThreePaneWorkspaceView: NSSplitView {
     }
 }
 
+final class ShutdownStatusView: NSView {
+    private let message = "GSDE is shutting down…"
+    private let detail = "Closing VS Code, browser, and terminal panes"
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.cgColor
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.cgColor
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.black.setFill()
+        bounds.fill()
+
+        let unionFrame = NSScreen.screens.reduce(NSRect.null) { $0.union($1.frame) }
+        let screens = NSScreen.screens.isEmpty ? [NSScreen.main].compactMap { $0 } : NSScreen.screens
+        for screen in screens {
+            let center = NSPoint(
+                x: screen.frame.midX - unionFrame.minX,
+                y: screen.frame.midY - unionFrame.minY
+            )
+            drawStatus(centeredAt: center)
+        }
+    }
+
+    private func drawStatus(centeredAt center: NSPoint) {
+        let titleAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 24, weight: .semibold),
+            .foregroundColor: NSColor(white: 0.92, alpha: 1)
+        ]
+        let detailAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 14, weight: .regular),
+            .foregroundColor: NSColor(white: 0.62, alpha: 1)
+        ]
+        let title = NSAttributedString(string: message, attributes: titleAttributes)
+        let subtitle = NSAttributedString(string: detail, attributes: detailAttributes)
+        let titleSize = title.size()
+        let subtitleSize = subtitle.size()
+        title.draw(at: NSPoint(x: center.x - titleSize.width / 2, y: center.y + 6))
+        subtitle.draw(at: NSPoint(x: center.x - subtitleSize.width / 2, y: center.y - subtitleSize.height - 8))
+    }
+}
+
 final class BorderlessMainWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -1929,7 +1978,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func prepareChromiumShutdown() {
         guard !didPrepareChromiumShutdown else { return }
         didPrepareChromiumShutdown = true
-        window?.contentView = nil
+        if let window {
+            let shutdownView = ShutdownStatusView(frame: NSRect(origin: .zero, size: window.frame.size))
+            window.contentView = shutdownView
+            window.displayIfNeeded()
+        }
         gsde_chromium_close_all_browsers()
         chromiumMessageLoopTimer?.invalidate()
         chromiumMessageLoopTimer = nil
