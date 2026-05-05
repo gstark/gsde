@@ -13,9 +13,11 @@ static inline int atomic_fetch_add(atomic_int *value, int increment) { return va
 static inline int atomic_fetch_sub(atomic_int *value, int decrement) { return value->fetch_sub(decrement, std::memory_order_seq_cst); }
 static inline void atomic_store(atomic_int *value, int desired) { value->store(desired, std::memory_order_seq_cst); }
 static inline void atomic_init(atomic_int *value, int desired) { value->store(desired, std::memory_order_seq_cst); }
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #if __has_include("include/capi/cef_app_capi.h")
 #define GSDE_HAVE_CEF_HEADERS 1
 #include "include/capi/cef_app_capi.h"
@@ -126,6 +128,51 @@ static bool path_is_equal_or_child(const std::string &path, const std::string &r
     return path.size() > root.size()
         && path.compare(0, root.size(), root) == 0
         && path[root.size()] == '/';
+}
+
+static bool ensure_directory_exists(const std::string &path, const char *context) {
+    if (path.empty() || path[0] != '/') {
+        char message[1024];
+        snprintf(message, sizeof(message), "%s directory path must be absolute: %s", context, path.c_str());
+        set_last_error(message);
+        return false;
+    }
+
+    std::string current = "/";
+    size_t start = 1;
+    while (start <= path.size()) {
+        size_t slash = path.find('/', start);
+        std::string component = path.substr(start, slash == std::string::npos ? std::string::npos : slash - start);
+        if (!component.empty()) {
+            if (current.size() > 1) current += "/";
+            current += component;
+
+            struct stat info;
+            if (stat(current.c_str(), &info) == 0) {
+                if (!S_ISDIR(info.st_mode)) {
+                    char message[2048];
+                    snprintf(message, sizeof(message), "%s directory path component is not a directory: %s", context, current.c_str());
+                    set_last_error(message);
+                    return false;
+                }
+            } else if (errno == ENOENT) {
+                if (mkdir(current.c_str(), 0700) != 0 && errno != EEXIST) {
+                    char message[2048];
+                    snprintf(message, sizeof(message), "%s directory creation failed for %s: %s", context, current.c_str(), strerror(errno));
+                    set_last_error(message);
+                    return false;
+                }
+            } else {
+                char message[2048];
+                snprintf(message, sizeof(message), "%s directory stat failed for %s: %s", context, current.c_str(), strerror(errno));
+                set_last_error(message);
+                return false;
+            }
+        }
+        if (slash == std::string::npos) break;
+        start = slash + 1;
+    }
+    return true;
 }
 
 static bool validate_cache_path_under_root(const char *cache_path, const char *context) {
@@ -1292,6 +1339,10 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
         }
         std::string normalized_cache_path;
         normalize_absolute_path(cache_path, &normalized_cache_path);
+        if (!ensure_directory_exists(normalized_cache_path, "CEF request context cache")) {
+            delete browser;
+            return NULL;
+        }
 
         cef_request_context_settings_t context_settings;
         memset(&context_settings, 0, sizeof(context_settings));
@@ -1316,18 +1367,37 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
             delete browser;
             return NULL;
         }
-        if (browser->request_context->get_cache_path) {
-            cef_string_userfree_t actual_cache_path = browser->request_context->get_cache_path(browser->request_context);
-            char actual_cache_path_buffer[4096];
-            copy_cef_string_to_buffer(actual_cache_path, actual_cache_path_buffer, sizeof(actual_cache_path_buffer));
-            if (cef_string_userfree_utf16_free_ptr) cef_string_userfree_utf16_free_ptr(actual_cache_path);
-            if (actual_cache_path_buffer[0] == '\0') {
-                char error_message[1024];
-                snprintf(error_message, sizeof(error_message), "CEF request context is incognito after cache creation request for cache=%s", normalized_cache_path.c_str());
-                set_last_error(error_message);
-                delete browser;
-                return NULL;
-            }
+        if (!browser->request_context->get_cache_path) {
+            char error_message[1024];
+            snprintf(error_message, sizeof(error_message), "CEF request context cannot report cache path for cache=%s", normalized_cache_path.c_str());
+            set_last_error(error_message);
+            delete browser;
+            return NULL;
+        }
+        cef_string_userfree_t actual_cache_path = browser->request_context->get_cache_path(browser->request_context);
+        char actual_cache_path_buffer[4096];
+        copy_cef_string_to_buffer(actual_cache_path, actual_cache_path_buffer, sizeof(actual_cache_path_buffer));
+        if (cef_string_userfree_utf16_free_ptr) cef_string_userfree_utf16_free_ptr(actual_cache_path);
+        std::string normalized_actual_cache_path;
+        if (!normalize_absolute_path(actual_cache_path_buffer, &normalized_actual_cache_path)) {
+            char error_message[1024];
+            snprintf(error_message, sizeof(error_message), "CEF request context is incognito after cache creation request for cache=%s", normalized_cache_path.c_str());
+            set_last_error(error_message);
+            delete browser;
+            return NULL;
+        }
+        if (normalized_actual_cache_path != normalized_cache_path) {
+            char error_message[2048];
+            snprintf(
+                error_message,
+                sizeof(error_message),
+                "CEF request context cache path mismatch; requested=%s actual=%s",
+                normalized_cache_path.c_str(),
+                normalized_actual_cache_path.c_str()
+            );
+            set_last_error(error_message);
+            delete browser;
+            return NULL;
         }
     }
 
