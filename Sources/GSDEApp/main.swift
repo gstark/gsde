@@ -600,6 +600,7 @@ final class VSCodePaneView: NSView {
     private var startTask: Task<Void, Never>?
     private var startTaskID: UUID?
     private var statusTask: Task<Void, Never>?
+    private var hideOverlayTask: Task<Void, Never>?
     private var stopTask: Task<Void, Never>?
     private var stopGeneration = 0
     private var hasStartedSession = false
@@ -687,11 +688,11 @@ final class VSCodePaneView: NSView {
 
     private func commonInit() {
         wantsLayer = true
-        layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+        layer?.backgroundColor = NSColor(calibratedWhite: 0.08, alpha: 1).cgColor
         browserContainer.translatesAutoresizingMaskIntoConstraints = false
         overlayContainer.translatesAutoresizingMaskIntoConstraints = false
         overlayContainer.wantsLayer = true
-        overlayContainer.layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.94).cgColor
+        overlayContainer.layer?.backgroundColor = NSColor(calibratedWhite: 0.08, alpha: 1).cgColor
         addSubview(browserContainer)
         addSubview(overlayContainer)
         NSLayoutConstraint.activate([
@@ -712,11 +713,13 @@ final class VSCodePaneView: NSView {
     private func tearDownViewLifetimeResources() {
         startTask?.cancel()
         statusTask?.cancel()
+        hideOverlayTask?.cancel()
         cefStatusTimer?.invalidate()
         cefStatusTimer = nil
         startTask = nil
         startTaskID = nil
         statusTask = nil
+        hideOverlayTask = nil
         hasStartedSession = false
         currentServerURL = nil
         currentCEFCacheDirectory = nil
@@ -888,7 +891,6 @@ final class VSCodePaneView: NSView {
         }
         do {
             try createCEFBrowser(serverURL: serverURL, cacheDirectory: cacheDirectory)
-            hideOverlay()
             beginMonitoringSession()
             return false
         } catch {
@@ -955,8 +957,22 @@ final class VSCodePaneView: NSView {
             updateWindowTitleForActivePane(title: currentTitle)
         }
         let httpStatus = gsde_chromium_browser_http_status(cefBrowser)
-        if httpStatus < 0, httpStatus != Self.cefErrorAborted {
+        if httpStatus >= 200 && httpStatus < 400 {
+            scheduleInitialOverlayHide()
+        } else if httpStatus < 0, httpStatus != Self.cefErrorAborted {
             showFailure(title: "VS Code page failed", detail: "CEF reported load error \(httpStatus) for \(currentServerURL?.absoluteString ?? "the VS Code URL")")
+        }
+    }
+
+    private func scheduleInitialOverlayHide() {
+        guard hideOverlayTask == nil, !overlayContainer.isHidden else { return }
+        hideOverlayTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            await MainActor.run { [weak self] in
+                guard let self, !Task.isCancelled else { return }
+                self.hideOverlay()
+                self.hideOverlayTask = nil
+            }
         }
     }
 
