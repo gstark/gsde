@@ -80,7 +80,9 @@ static cef_string_userfree_utf16_free_fn cef_string_userfree_utf16_free_ptr = NU
 static cef_api_hash_fn cef_api_hash_ptr = NULL;
 static cef_api_version_fn cef_api_version_ptr = NULL;
 static pthread_mutex_t live_browsers_mutex = PTHREAD_MUTEX_INITIALIZER;
-static gsde_chromium_browser_t *live_browsers[256] = {0};
+static gsde_chromium_browser_t **live_browsers = NULL;
+static size_t live_browsers_count = 0;
+static size_t live_browsers_capacity = 0;
 static cef_app_t *gsde_cef_app(void);
 #endif
 
@@ -470,31 +472,58 @@ struct gsde_chromium_browser {
 static cef_frame_t *main_frame_for_browser(gsde_chromium_browser_t *browser);
 
 static void track_live_browser(gsde_chromium_browser_t *browser) {
+    if (!browser) return;
     pthread_mutex_lock(&live_browsers_mutex);
-    for (size_t i = 0; i < sizeof(live_browsers) / sizeof(live_browsers[0]); i++) {
-        if (!live_browsers[i]) {
-            live_browsers[i] = browser;
-            break;
+    for (size_t i = 0; i < live_browsers_count; i++) {
+        if (live_browsers[i] == browser) {
+            pthread_mutex_unlock(&live_browsers_mutex);
+            return;
         }
     }
+    if (live_browsers_count == live_browsers_capacity) {
+        size_t new_capacity = live_browsers_capacity ? live_browsers_capacity * 2 : 8;
+        gsde_chromium_browser_t **new_live_browsers = (gsde_chromium_browser_t **)realloc(live_browsers, new_capacity * sizeof(gsde_chromium_browser_t *));
+        if (!new_live_browsers) {
+            pthread_mutex_unlock(&live_browsers_mutex);
+            set_last_error("Failed to allocate live browser tracking storage");
+            return;
+        }
+        live_browsers = new_live_browsers;
+        live_browsers_capacity = new_capacity;
+    }
+    live_browsers[live_browsers_count++] = browser;
     pthread_mutex_unlock(&live_browsers_mutex);
 }
 
 static void untrack_live_browser(gsde_chromium_browser_t *browser) {
     pthread_mutex_lock(&live_browsers_mutex);
-    for (size_t i = 0; i < sizeof(live_browsers) / sizeof(live_browsers[0]); i++) {
-        if (live_browsers[i] == browser) live_browsers[i] = NULL;
+    for (size_t i = 0; i < live_browsers_count;) {
+        if (live_browsers[i] == browser) {
+            live_browsers[i] = live_browsers[live_browsers_count - 1];
+            live_browsers_count--;
+        } else {
+            i++;
+        }
     }
     pthread_mutex_unlock(&live_browsers_mutex);
 }
 
 void gsde_chromium_close_all_browsers(void) {
-    gsde_chromium_browser_t *snapshot[256] = {0};
     pthread_mutex_lock(&live_browsers_mutex);
-    memcpy(snapshot, live_browsers, sizeof(snapshot));
+    size_t snapshot_count = live_browsers_count;
+    gsde_chromium_browser_t **snapshot = NULL;
+    if (snapshot_count > 0) {
+        snapshot = (gsde_chromium_browser_t **)malloc(snapshot_count * sizeof(gsde_chromium_browser_t *));
+        if (snapshot) memcpy(snapshot, live_browsers, snapshot_count * sizeof(gsde_chromium_browser_t *));
+    }
     pthread_mutex_unlock(&live_browsers_mutex);
 
-    for (size_t i = 0; i < sizeof(snapshot) / sizeof(snapshot[0]); i++) {
+    if (snapshot_count > 0 && !snapshot) {
+        set_last_error("Failed to allocate live browser shutdown snapshot");
+        return;
+    }
+
+    for (size_t i = 0; i < snapshot_count; i++) {
         gsde_chromium_browser_t *browser = snapshot[i];
         if (!browser || !browser->browser) continue;
         browser->destroy_requested = 1;
@@ -503,6 +532,7 @@ void gsde_chromium_close_all_browsers(void) {
             host->close_browser(host, 1);
         }
     }
+    free(snapshot);
 }
 
 static gsde_chromium_browser_t *browser_from_client(cef_client_t *client) {
@@ -779,6 +809,7 @@ static int CEF_CALLBACK gsde_do_close(cef_life_span_handler_t *self, cef_browser
 }
 
 static void free_chromium_browser(gsde_chromium_browser_t *browser) {
+    untrack_live_browser(browser);
     delete browser;
 }
 
