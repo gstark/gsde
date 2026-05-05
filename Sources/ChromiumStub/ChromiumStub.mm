@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <atomic>
 #include <new>
+#include <pthread.h>
 #include <string>
 #include <vector>
 
@@ -78,6 +79,8 @@ static cef_string_utf8_clear_fn cef_string_utf8_clear_ptr = NULL;
 static cef_string_userfree_utf16_free_fn cef_string_userfree_utf16_free_ptr = NULL;
 static cef_api_hash_fn cef_api_hash_ptr = NULL;
 static cef_api_version_fn cef_api_version_ptr = NULL;
+static pthread_mutex_t live_browsers_mutex = PTHREAD_MUTEX_INITIALIZER;
+static gsde_chromium_browser_t *live_browsers[256] = {0};
 static cef_app_t *gsde_cef_app(void);
 #endif
 
@@ -395,9 +398,15 @@ void gsde_chromium_shutdown(void) {
 #endif
 }
 
+void gsde_chromium_close_all_browsers(void);
+
 int gsde_chromium_live_browser_count(void) {
     return atomic_load(&live_browser_count);
 }
+
+#if !GSDE_HAVE_CEF_HEADERS
+void gsde_chromium_close_all_browsers(void) {}
+#endif
 
 #if GSDE_HAVE_CEF_HEADERS
 static void release_request_context(cef_request_context_t **request_context) {
@@ -459,6 +468,42 @@ struct gsde_chromium_browser {
 };
 
 static cef_frame_t *main_frame_for_browser(gsde_chromium_browser_t *browser);
+
+static void track_live_browser(gsde_chromium_browser_t *browser) {
+    pthread_mutex_lock(&live_browsers_mutex);
+    for (size_t i = 0; i < sizeof(live_browsers) / sizeof(live_browsers[0]); i++) {
+        if (!live_browsers[i]) {
+            live_browsers[i] = browser;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&live_browsers_mutex);
+}
+
+static void untrack_live_browser(gsde_chromium_browser_t *browser) {
+    pthread_mutex_lock(&live_browsers_mutex);
+    for (size_t i = 0; i < sizeof(live_browsers) / sizeof(live_browsers[0]); i++) {
+        if (live_browsers[i] == browser) live_browsers[i] = NULL;
+    }
+    pthread_mutex_unlock(&live_browsers_mutex);
+}
+
+void gsde_chromium_close_all_browsers(void) {
+    gsde_chromium_browser_t *snapshot[256] = {0};
+    pthread_mutex_lock(&live_browsers_mutex);
+    memcpy(snapshot, live_browsers, sizeof(snapshot));
+    pthread_mutex_unlock(&live_browsers_mutex);
+
+    for (size_t i = 0; i < sizeof(snapshot) / sizeof(snapshot[0]); i++) {
+        gsde_chromium_browser_t *browser = snapshot[i];
+        if (!browser || !browser->browser) continue;
+        browser->destroy_requested = 1;
+        cef_browser_host_t *host = browser->browser->get_host ? browser->browser->get_host(browser->browser) : NULL;
+        if (host && host->close_browser) {
+            host->close_browser(host, 1);
+        }
+    }
+}
 
 static gsde_chromium_browser_t *browser_from_client(cef_client_t *client) {
     return (gsde_chromium_browser_t *)((char *)client - offsetof(gsde_chromium_browser_t, client));
@@ -716,6 +761,7 @@ static void CEF_CALLBACK gsde_on_after_created(cef_life_span_handler_t *self, ce
         browser->view = host->get_window_handle(host);
     }
     atomic_fetch_add(&live_browser_count, 1);
+    track_live_browser(browser);
     char message[160];
     snprintf(message, sizeof(message), "CEF browser #%d on_after_created%s", browser->browser_id, browser->view ? " with native view" : " without native view");
     gsde_log(message);
@@ -738,18 +784,14 @@ static void free_chromium_browser(gsde_chromium_browser_t *browser) {
 
 static void CEF_CALLBACK gsde_on_before_close(cef_life_span_handler_t *self, cef_browser_t *cef_browser) {
     gsde_chromium_browser_t *browser = browser_from_life_span(self);
-    cef_browser_t *closed_browser = browser->browser ? browser->browser : cef_browser;
     browser->browser = NULL;
     int previous = atomic_fetch_sub(&live_browser_count, 1);
     if (previous <= 0) atomic_store(&live_browser_count, 0);
+    untrack_live_browser(browser);
     char message[128];
     snprintf(message, sizeof(message), "CEF browser #%d on_before_close", browser->browser_id);
     gsde_log(message);
     log_live_browser_count("after close");
-    if (closed_browser && closed_browser->base.release) {
-        closed_browser->base.release((cef_base_ref_counted_t *)closed_browser);
-    }
-    release_request_context(&browser->request_context);
 }
 
 static void copy_cef_string_to_buffer(const cef_string_t *cef_string, char *buffer, size_t buffer_size) {

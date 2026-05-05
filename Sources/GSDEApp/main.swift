@@ -1848,6 +1848,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         guard !didPrepareChromiumShutdown else { return }
         didPrepareChromiumShutdown = true
         window?.contentView = nil
+        gsde_chromium_close_all_browsers()
         chromiumMessageLoopTimer?.invalidate()
         chromiumMessageLoopTimer = nil
         for _ in 0..<500 {
