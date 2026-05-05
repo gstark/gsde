@@ -791,6 +791,7 @@ final class BrowserPaneView: NSView {
 
     private func refreshCEFState() {
         guard let cefBrowser else { return }
+        attachCEFBrowserViewIfAvailable(cefBrowser)
         let currentTitle = String(cString: gsde_chromium_browser_title(cefBrowser))
         if Self.activePane === self, !currentTitle.isEmpty {
             updateWindowTitleForActivePane(title: currentTitle)

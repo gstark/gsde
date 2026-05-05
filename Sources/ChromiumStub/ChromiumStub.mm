@@ -711,9 +711,13 @@ static cef_request_handler_t *CEF_CALLBACK gsde_get_request_handler(cef_client_t
 static void CEF_CALLBACK gsde_on_after_created(cef_life_span_handler_t *self, cef_browser_t *cef_browser) {
     gsde_chromium_browser_t *browser = browser_from_life_span(self);
     browser->browser = cef_browser;
+    cef_browser_host_t *host = browser->browser && browser->browser->get_host ? browser->browser->get_host(browser->browser) : NULL;
+    if (!browser->view && host && host->get_window_handle) {
+        browser->view = host->get_window_handle(host);
+    }
     atomic_fetch_add(&live_browser_count, 1);
-    char message[128];
-    snprintf(message, sizeof(message), "CEF browser #%d on_after_created", browser->browser_id);
+    char message[160];
+    snprintf(message, sizeof(message), "CEF browser #%d on_after_created%s", browser->browser_id, browser->view ? " with native view" : " without native view");
     gsde_log(message);
     log_live_browser_count("after create");
     if (browser->browser && browser->browser->base.add_ref) browser->browser->base.add_ref((cef_base_ref_counted_t *)browser->browser);
@@ -1416,25 +1420,20 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
 
     ScopedCefString url(initial_url ? initial_url : "about:blank");
 
-    browser->browser = cef_browser_host_create_browser_sync_ptr(&window_info, &browser->client, url.get(), &browser_settings, NULL, browser->request_context);
+    int create_ok = cef_browser_host_create_browser_ptr(&window_info, &browser->client, url.get(), &browser_settings, NULL, browser->request_context);
     browser->view = window_info.view;
 
-    if (!browser->browser) {
-        set_last_error("cef_browser_host_create_browser_sync returned NULL");
+    if (!create_ok) {
+        set_last_error("cef_browser_host_create_browser returned false");
         gsde_chromium_browser_destroy(browser);
         return NULL;
     }
-    cef_browser_host_t *created_host = browser->browser->get_host ? browser->browser->get_host(browser->browser) : NULL;
-    if (!browser->view && created_host && created_host->get_window_handle) {
-        browser->view = created_host->get_window_handle(created_host);
-    }
 
-    snprintf(status, sizeof(status), "CEF browser created%s", browser->view ? " with native view" : " without native view");
+    snprintf(status, sizeof(status), "CEF browser creation scheduled%s", browser->view ? " with native view" : " without native view");
     snprintf(last_error, sizeof(last_error), "No CEF errors recorded");
     char created_message[160];
-    snprintf(created_message, sizeof(created_message), "CEF browser #%d created%s", browser->browser_id, browser->view ? " with native view" : " without native view");
+    snprintf(created_message, sizeof(created_message), "CEF browser #%d creation scheduled%s", browser->browser_id, browser->view ? " with native view" : " without native view");
     gsde_log(created_message);
-    if (browser->browser->base.add_ref) browser->browser->base.add_ref((cef_base_ref_counted_t *)browser->browser);
     return browser;
 #else
     (void)parent_nsview; (void)width; (void)height; (void)initial_url; (void)cache_path;
