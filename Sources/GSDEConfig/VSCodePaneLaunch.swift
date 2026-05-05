@@ -63,6 +63,11 @@ public struct CodeServerBundleResolver: Sendable {
     }
 }
 
+public enum VSCodePaneProfileMode: String, Sendable {
+    case native
+    case local
+}
+
 public struct VSCodePaneStateDirectories: Equatable, Sendable {
     public let paneID: String
     public let workspaceFolder: URL
@@ -104,7 +109,7 @@ public struct VSCodePaneStateResolver: Sendable {
         self.environment = environment
     }
 
-    public func directories(paneID: String, configSource: WorkspaceConfigSource) throws -> VSCodePaneStateDirectories {
+    public func directories(paneID: String, configSource: WorkspaceConfigSource, profileMode: VSCodePaneProfileMode = .native) throws -> VSCodePaneStateDirectories {
         let trimmedPaneID = paneID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPaneID.isEmpty else { throw VSCodePaneLaunchError.emptyPaneID }
 
@@ -125,25 +130,45 @@ public struct VSCodePaneStateResolver: Sendable {
         let paneStateDirectory = gsdeConfigDirectory
             .appendingPathComponent("panes", isDirectory: true)
             .appendingPathComponent(Self.pathComponent(forPaneID: trimmedPaneID), isDirectory: true)
+        let localUserDataDirectory = paneStateDirectory
+            .appendingPathComponent("code-server", isDirectory: true)
+            .appendingPathComponent("user-data", isDirectory: true)
+            .standardizedFileURL
+        let localExtensionsDirectory = paneStateDirectory
+            .appendingPathComponent("code-server", isDirectory: true)
+            .appendingPathComponent("extensions", isDirectory: true)
+            .standardizedFileURL
+        let homeDirectory = Self.homeDirectory(in: environment)
+        let nativeUserDataDirectory = homeDirectory
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("Application Support", isDirectory: true)
+            .appendingPathComponent("Code", isDirectory: true)
+            .standardizedFileURL
+        let nativeExtensionsDirectory = homeDirectory
+            .appendingPathComponent(".vscode", isDirectory: true)
+            .appendingPathComponent("extensions", isDirectory: true)
+            .standardizedFileURL
+
         return VSCodePaneStateDirectories(
             paneID: trimmedPaneID,
             workspaceFolder: workspaceFolder,
             gsdeConfigDirectory: gsdeConfigDirectory.standardizedFileURL,
             paneStateDirectory: paneStateDirectory.standardizedFileURL,
-            codeServerUserDataDirectory: paneStateDirectory
-                .appendingPathComponent("code-server", isDirectory: true)
-                .appendingPathComponent("user-data", isDirectory: true)
-                .standardizedFileURL,
-            codeServerExtensionsDirectory: paneStateDirectory
-                .appendingPathComponent("code-server", isDirectory: true)
-                .appendingPathComponent("extensions", isDirectory: true)
-                .standardizedFileURL,
+            codeServerUserDataDirectory: profileMode == .native ? nativeUserDataDirectory : localUserDataDirectory,
+            codeServerExtensionsDirectory: profileMode == .native ? nativeExtensionsDirectory : localExtensionsDirectory,
             cefCacheDirectory: gsdeConfigDirectory
                 .appendingPathComponent("chromium", isDirectory: true)
                 .appendingPathComponent("vscode-panes", isDirectory: true)
                 .appendingPathComponent(Self.pathComponent(forPaneID: trimmedPaneID), isDirectory: true)
                 .standardizedFileURL
         )
+    }
+
+    private static func homeDirectory(in environment: [String: String]) -> URL {
+        if let home = nonEmptyEnvironmentURL(named: "HOME", in: environment) {
+            return home.standardizedFileURL
+        }
+        return FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL
     }
 
     private static func nonEmptyEnvironmentURL(named name: String, in environment: [String: String]) -> URL? {
@@ -190,13 +215,15 @@ public struct CodeServerLaunchBuilder: Sendable {
         paneID: String,
         configSource: WorkspaceConfigSource,
         port: UInt16,
+        profileMode: VSCodePaneProfileMode = .native,
         bundleResolver: CodeServerBundleResolver = CodeServerBundleResolver()
     ) throws -> CodeServerLaunchConfiguration {
         try configuration(
             executableURL: bundleResolver.executableURL(),
             paneID: paneID,
             configSource: configSource,
-            port: port
+            port: port,
+            profileMode: profileMode
         )
     }
 
@@ -204,11 +231,12 @@ public struct CodeServerLaunchBuilder: Sendable {
         executableURL: URL,
         paneID: String,
         configSource: WorkspaceConfigSource,
-        port: UInt16
+        port: UInt16,
+        profileMode: VSCodePaneProfileMode = .native
     ) throws -> CodeServerLaunchConfiguration {
         guard port != 0 else { throw VSCodePaneLaunchError.invalidPort(port) }
 
-        let stateDirectories = try stateResolver.directories(paneID: paneID, configSource: configSource)
+        let stateDirectories = try stateResolver.directories(paneID: paneID, configSource: configSource, profileMode: profileMode)
         let normalizedBindHost = try Self.normalizedHost(bindHost)
         let bindAddress = Self.bindAddress(host: normalizedBindHost, port: port)
         let arguments = [

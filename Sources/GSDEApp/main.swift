@@ -589,6 +589,7 @@ final class VSCodePaneView: NSView {
     private let paneID: String
     private let configSource: WorkspaceConfigSource
     private let codeServerManager: CodeServerManager
+    private let profileMode: VSCodePaneProfileMode
     private let browserContainer = NSView()
     private let overlayContainer = NSView()
     private var cefBrowser: OpaquePointer?
@@ -609,10 +610,11 @@ final class VSCodePaneView: NSView {
     private static let cefErrorAborted = -3
     var drawsActiveAppearance = true
 
-    init(paneID: String, configSource: WorkspaceConfigSource, codeServerManager: CodeServerManager) {
+    init(paneID: String, configSource: WorkspaceConfigSource, codeServerManager: CodeServerManager, profileMode: VSCodePaneProfileMode = .native) {
         self.paneID = paneID
         self.configSource = configSource
         self.codeServerManager = codeServerManager
+        self.profileMode = profileMode
         super.init(frame: .zero)
         commonInit()
     }
@@ -834,7 +836,7 @@ final class VSCodePaneView: NSView {
         let pendingStopGeneration = stopGeneration
         let taskID = UUID()
         startTaskID = taskID
-        startTask = Task { [weak self, paneID, configSource, codeServerManager] in
+        startTask = Task { [weak self, paneID, configSource, codeServerManager, profileMode] in
             do {
                 await pendingStopTask?.value
                 try Task.checkCancellation()
@@ -845,7 +847,7 @@ final class VSCodePaneView: NSView {
                 }
                 guard shouldStart else { return }
 
-                let session = try await codeServerManager.start(CodeServerStartRequest(paneID: paneID, configSource: configSource))
+                let session = try await codeServerManager.start(CodeServerStartRequest(paneID: paneID, configSource: configSource, profileMode: profileMode))
                 try Task.checkCancellation()
                 let shouldStopSession = await MainActor.run { [weak self] in
                     guard let self, startTaskID == taskID else { return true }
@@ -1174,7 +1176,8 @@ final class ConfiguredPaneRegistry {
             contentView = VSCodePaneView(
                 paneID: definition.id,
                 configSource: configSource,
-                codeServerManager: codeServerManager(forPaneID: definition.id)
+                codeServerManager: codeServerManager(forPaneID: definition.id),
+                profileMode: definition.profile == "local" ? .local : .native
             )
         }
 

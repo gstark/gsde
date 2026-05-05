@@ -632,8 +632,8 @@ struct WorkspaceConfigTOMLParser {
             if urlString != nil {
                 throw WorkspaceConfigParseError.invalidValue(field: "\(table).url", value: "vscode panes cannot define url")
             }
-            if profile != nil {
-                throw WorkspaceConfigParseError.invalidValue(field: "\(table).profile", value: "vscode panes cannot define profile")
+            if let profile, profile != "native" && profile != "local" {
+                throw WorkspaceConfigParseError.invalidValue(field: "\(table).profile", value: "vscode pane profile must be native or local")
             }
             if command != nil {
                 throw WorkspaceConfigParseError.invalidValue(field: "\(table).command", value: "vscode panes cannot define command")

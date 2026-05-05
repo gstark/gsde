@@ -105,7 +105,7 @@ web: npm run dev
 
 Browser storage is persisted beside the resolved config file using CEF's global browser profile. For project configs, all browser panes share `.config/gsde/chromium/Default` in the project directory. For an explicit `GSDE_CONFIG=/path/to/config.toml`, the shared profile is `/path/to/chromium/Default`. GSDE creates the needed directories automatically. Built-in fallback launches use `~/Library/Application Support/GSDE/Chromium`. The `profile` field is currently accepted for config compatibility, but configured browser panes intentionally share one project profile.
 
-Each configured `vscode` pane is isolated by pane ID. GSDE launches a separate code-server lifecycle with its own random port, user data directory, extensions directory, and CEF browser profile under `chromium/vscode-panes/<pane-id>`.
+Each configured `vscode` pane is isolated by pane ID. GSDE launches a separate code-server lifecycle with its own random port and CEF browser profile under `chromium/vscode-panes/<pane-id>`. By default, VS Code panes use the native VS Code profile locations (`~/Library/Application Support/Code` for user data and `~/.vscode/extensions` for extensions) so settings, keybindings, snippets, themes, and installed extensions match desktop VS Code. Set `profile = "local"` on a `vscode` pane to use project-local code-server state under `.config/gsde/panes/<pane-id>/code-server` instead; `profile = "native"` is accepted as an explicit default.
 
 Panes can optionally define CSS-style pixel border and padding shorthands. Defaults can be set by pane kind and overridden per pane:
 

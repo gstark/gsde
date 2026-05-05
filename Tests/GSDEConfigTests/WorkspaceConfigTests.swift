@@ -134,7 +134,7 @@ struct WorkspaceConfigTests {
             .appendingPathComponent("config.toml")
         let resolver = VSCodePaneStateResolver(environment: ["GSDE_PROJECT_DIR": project.path])
 
-        let state = try resolver.directories(paneID: "editor/main", configSource: .projectDefault(configURL))
+        let state = try resolver.directories(paneID: "editor/main", configSource: .projectDefault(configURL), profileMode: .local)
 
         let paneRoot = project.appendingPathComponent(".config/gsde/panes/editor%2Fmain", isDirectory: true)
         #expect(state.workspaceFolder == project.standardizedFileURL)
@@ -165,8 +165,8 @@ struct WorkspaceConfigTests {
         let configSource = WorkspaceConfigSource.environment(configDirectory.appendingPathComponent("workspace.toml"))
         let resolver = VSCodePaneStateResolver(environment: [:])
 
-        let left = try resolver.directories(paneID: "editor.left", configSource: configSource)
-        let right = try resolver.directories(paneID: "editor/right", configSource: configSource)
+        let left = try resolver.directories(paneID: "editor.left", configSource: configSource, profileMode: .local)
+        let right = try resolver.directories(paneID: "editor/right", configSource: configSource, profileMode: .local)
 
         #expect(left.codeServerUserDataDirectory != right.codeServerUserDataDirectory)
         #expect(left.codeServerExtensionsDirectory != right.codeServerExtensionsDirectory)
@@ -186,7 +186,8 @@ struct WorkspaceConfigTests {
             executableURL: executableURL,
             paneID: "editor",
             configSource: .projectDefault(configURL),
-            port: 49152
+            port: 49152,
+            profileMode: .local
         )
 
         let paneRoot = project.appendingPathComponent(".config/gsde/panes/editor", isDirectory: true)
@@ -325,7 +326,7 @@ struct WorkspaceConfigTests {
     func vscodePanesRejectBrowserAndTerminalOnlyFields() throws {
         let invalidFields = [
             (field: "url", line: "url = \"https://example.com\"", message: "vscode panes cannot define url"),
-            (field: "profile", line: "profile = \"shared\"", message: "vscode panes cannot define profile"),
+            (field: "profile", line: "profile = \"shared\"", message: "vscode pane profile must be native or local"),
             (field: "command", line: "command = \"code .\"", message: "vscode panes cannot define command"),
             (field: "procfile", line: "procfile = \"Procfile.dev\"", message: "vscode panes cannot define procfile"),
             (field: "process", line: "process = \"web\"", message: "vscode panes cannot define process")

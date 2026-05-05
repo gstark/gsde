@@ -52,17 +52,20 @@ public struct CodeServerStartRequest: Sendable {
     public let configSource: WorkspaceConfigSource
     public let executableURL: URL?
     public let readinessTimeout: TimeInterval
+    public let profileMode: VSCodePaneProfileMode
 
     public init(
         paneID: String,
         configSource: WorkspaceConfigSource,
         executableURL: URL? = nil,
-        readinessTimeout: TimeInterval = 20
+        readinessTimeout: TimeInterval = 20,
+        profileMode: VSCodePaneProfileMode = .native
     ) {
         self.paneID = paneID
         self.configSource = configSource
         self.executableURL = executableURL
         self.readinessTimeout = readinessTimeout
+        self.profileMode = profileMode
     }
 }
 
@@ -296,7 +299,8 @@ public actor CodeServerManager {
             executableURL: executableURL,
             paneID: request.paneID,
             configSource: request.configSource,
-            port: port
+            port: port,
+            profileMode: request.profileMode
         )
         try configuration.stateDirectories.createDirectories()
 
