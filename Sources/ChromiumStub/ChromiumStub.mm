@@ -1420,7 +1420,9 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
 
     ScopedCefString url(initial_url ? initial_url : "about:blank");
 
-    browser->browser = cef_browser_host_create_browser_sync_ptr(&window_info, &browser->client, url.get(), &browser_settings, NULL, browser->request_context);
+    cef_browser_t *created_browser = cef_browser_host_create_browser_sync_ptr(&window_info, &browser->client, url.get(), &browser_settings, NULL, browser->request_context);
+    bool retained_by_callback = browser->browser == created_browser;
+    browser->browser = created_browser;
     browser->view = window_info.view;
 
     if (!browser->browser) {
@@ -1438,7 +1440,7 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     char created_message[160];
     snprintf(created_message, sizeof(created_message), "CEF browser #%d created%s", browser->browser_id, browser->view ? " with native view" : " without native view");
     gsde_log(created_message);
-    if (browser->browser->base.add_ref) browser->browser->base.add_ref((cef_base_ref_counted_t *)browser->browser);
+    if (!retained_by_callback && browser->browser->base.add_ref) browser->browser->base.add_ref((cef_base_ref_counted_t *)browser->browser);
     return browser;
 #else
     (void)parent_nsview; (void)width; (void)height; (void)initial_url; (void)cache_path;
