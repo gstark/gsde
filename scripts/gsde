@@ -118,7 +118,8 @@ write_procfile_config() {
   {
     printf 'version = 1\n'
     printf 'title = "%s"\n' "$project_name"
-    printf 'startup_layout = "dev"\n\n'
+    printf 'startup_layout = "dev"\n'
+    printf 'meta_key = ["command"]\n\n'
 
     for process in $processes; do
       pane_id=$(pane_id_for_process "$process")

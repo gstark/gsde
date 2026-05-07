@@ -1910,6 +1910,19 @@ final class ShutdownStatusView: NSView {
     }
 }
 
+private extension WorkspaceConfig {
+    var metaKeyEventModifierFlags: NSEvent.ModifierFlags {
+        metaKeyModifiers.reduce(into: NSEvent.ModifierFlags()) { flags, modifier in
+            switch modifier {
+            case .shift: flags.insert(.shift)
+            case .control: flags.insert(.control)
+            case .option: flags.insert(.option)
+            case .command: flags.insert(.command)
+            }
+        }
+    }
+}
+
 final class BorderlessMainWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -1924,15 +1937,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var layoutFlashPanels: [LayoutFlashPanel] = []
     private weak var responderBeforeLayoutSwitcher: NSResponder?
     private var didPrepareChromiumShutdown = false
+    private var metaKeyModifierFlags: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
     private var frameAutosaveName: String { WorkspaceStateScope.key("GSDE.MainWindow") }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.presentationOptions = [.hideDock, .hideMenuBar]
-        installMainMenu()
-        installLayoutSwitcherShortcutMonitor()
 
         let loadedConfig = WorkspaceConfigLoader().load()
+        metaKeyModifierFlags = loadedConfig.config.metaKeyEventModifierFlags
+        installMainMenu()
+        installLayoutSwitcherShortcutMonitor()
         let hasConfigErrors = loadedConfig.diagnostics.contains { $0.severity == .error }
         if hasConfigErrors {
             for diagnostic in loadedConfig.diagnostics {
@@ -2045,6 +2060,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 self.switchToNextLayout(nil)
                 return nil
             }
+            if let layoutIndex = self.layoutIndexShortcut(event) {
+                self.switchToLayout(at: layoutIndex)
+                return nil
+            }
             return event
         }
     }
@@ -2059,10 +2078,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private func isLayoutShortcut(_ event: NSEvent, keyCode: UInt16) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        return flags == [.command, .option, .control, .shift] && event.keyCode == keyCode
+        return flags == metaKeyModifierFlags && event.keyCode == keyCode
     }
 
-
+    private func layoutIndexShortcut(_ event: NSEvent) -> Int? {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags == metaKeyModifierFlags else { return nil }
+        switch event.keyCode {
+        case 18: return 0 // 1
+        case 19: return 1 // 2
+        case 20: return 2 // 3
+        case 21: return 3 // 4
+        case 23: return 4 // 5
+        case 22: return 5 // 6
+        case 26: return 6 // 7
+        case 28: return 7 // 8
+        case 25: return 8 // 9
+        case 29: return 9 // 0
+        default: return nil
+        }
+    }
 
     private func initializeChromiumIfAvailable(rootCachePath: URL) {
         guard gsde_chromium_cef_available() != 0 else { return }
@@ -2214,9 +2249,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         workspaceMenu.addItem(.separator())
         addMenuItem("Focus Next Pane", #selector(focusNextPane(_:)), "}", to: workspaceMenu)
         addMenuItem("Focus Previous Pane", #selector(focusPreviousPane(_:)), "{", to: workspaceMenu)
-        addMenuItem("Switch Layout…", #selector(showLayoutSwitcher(_:)), "l", modifiers: [.command, .option, .control, .shift], to: workspaceMenu)
-        addMenuItem("Previous Layout", #selector(switchToPreviousLayout(_:)), String(UnicodeScalar(NSLeftArrowFunctionKey)!), modifiers: [.command, .option, .control, .shift], to: workspaceMenu)
-        addMenuItem("Next Layout", #selector(switchToNextLayout(_:)), String(UnicodeScalar(NSRightArrowFunctionKey)!), modifiers: [.command, .option, .control, .shift], to: workspaceMenu)
+        addMenuItem("Switch Layout…", #selector(showLayoutSwitcher(_:)), "l", modifiers: metaKeyModifierFlags, to: workspaceMenu)
+        addMenuItem("Previous Layout", #selector(switchToPreviousLayout(_:)), String(UnicodeScalar(NSLeftArrowFunctionKey)!), modifiers: metaKeyModifierFlags, to: workspaceMenu)
+        addMenuItem("Next Layout", #selector(switchToNextLayout(_:)), String(UnicodeScalar(NSRightArrowFunctionKey)!), modifiers: metaKeyModifierFlags, to: workspaceMenu)
         addMenuItem("Move Pane Left", #selector(moveActivePaneLeft(_:)), "{", modifiers: [.command, .shift], to: workspaceMenu)
         addMenuItem("Move Pane Right", #selector(moveActivePaneRight(_:)), "}", modifiers: [.command, .shift], to: workspaceMenu)
         workspaceMenu.addItem(.separator())
@@ -2337,6 +2372,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if let layoutID = workspace.switchLayout(offset: 1) {
             showLayoutFlash(layoutID: layoutID, workspace: workspace)
         }
+    }
+
+    private func switchToLayout(at index: Int) {
+        guard let workspace = window?.contentView as? MosaicWorkspaceView,
+              workspace.layoutIDs.indices.contains(index)
+        else {
+            NSSound.beep()
+            return
+        }
+        let layoutID = workspace.layoutIDs[index]
+        workspace.applyLayout(id: layoutID)
+        showLayoutFlash(layoutID: layoutID, workspace: workspace)
     }
 
     private func showLayoutFlash(layoutID: String, workspace: MosaicWorkspaceView) {

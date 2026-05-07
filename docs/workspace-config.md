@@ -48,6 +48,7 @@ layout_flash_duration = 1.4
 - `startup_layout` is required and must match one `[[layouts]]` `id`.
 - `layout_flash_enabled` is optional and defaults to `true`. When enabled, direct previous/next layout switching briefly flashes the new layout name centered on every screen.
 - `layout_flash_duration` is optional and defaults to `1.4` seconds.
+- `meta_key` is optional and defaults to `["command"]`. It controls the shared GSDE shortcut modifier used for layout switching, e.g. `meta_key = ["control", "option"]` makes `Ctrl-Option-L` open the layout switcher and `Ctrl-Option-Left/Right` switch layouts.
 - Unknown keys are rejected so typos fail fast.
 
 ## Panes
@@ -155,7 +156,7 @@ Examples:
 
 - `docs/sample-configs/browser-terminal-dev.toml`: terminals on the left, one browser spanning the full right column.
 - `docs/sample-configs/vscode-terminal-dev.toml`: VS Code editor pane beside a terminal.
-- `docs/sample-configs/multiple-named-layouts.toml`: more than one validated layout, with `startup_layout` selecting the one opened initially. Use **Workspace → Switch Layout…** or `Shift-Ctrl-Option-Command-L` to open the layout switcher. Arrow keys or `j`/`k` move through the list, Return activates the selected layout, and Escape closes without changing. Use `Shift-Ctrl-Option-Command-Left`/`Right` to switch directly to the previous or next layout.
+- `docs/sample-configs/multiple-named-layouts.toml`: more than one validated layout, with `startup_layout` selecting the one opened initially. Use **Workspace → Switch Layout…** or the configured meta key plus `L` to open the layout switcher. Arrow keys or `j`/`k` move through the list, Return activates the selected layout, and Escape closes without changing. Use the configured meta key plus `Left`/`Right` to switch directly to the previous or next layout, or the configured meta key plus a number key to switch to that layout by config order (`1` is first, `0` is tenth).
 
 ## Validation rules
 

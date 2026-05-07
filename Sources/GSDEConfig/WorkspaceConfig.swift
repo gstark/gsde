@@ -12,6 +12,7 @@ public struct WorkspaceConfig: Equatable, Sendable {
     public let startupLayout: String
     public let layoutFlashEnabled: Bool
     public let layoutFlashDuration: Double
+    public let metaKeyModifiers: [WorkspaceMetaKeyModifier]
     public let paneKindDefaults: [PaneDefinition.Kind: PaneBoxStyle]
 
     public init(
@@ -23,6 +24,7 @@ public struct WorkspaceConfig: Equatable, Sendable {
         startupLayout: String,
         layoutFlashEnabled: Bool = true,
         layoutFlashDuration: Double = 1.4,
+        metaKeyModifiers: [WorkspaceMetaKeyModifier] = WorkspaceMetaKeyModifier.defaultMetaKey,
         paneKindDefaults: [PaneDefinition.Kind: PaneBoxStyle] = [:]
     ) {
         self.version = version
@@ -33,6 +35,7 @@ public struct WorkspaceConfig: Equatable, Sendable {
         self.startupLayout = startupLayout
         self.layoutFlashEnabled = layoutFlashEnabled
         self.layoutFlashDuration = layoutFlashDuration
+        self.metaKeyModifiers = metaKeyModifiers
         self.paneKindDefaults = paneKindDefaults
     }
 
@@ -75,6 +78,7 @@ public struct WorkspaceConfig: Equatable, Sendable {
         startupLayout: "default",
         layoutFlashEnabled: true,
         layoutFlashDuration: 1.4,
+        metaKeyModifiers: WorkspaceMetaKeyModifier.defaultMetaKey,
         paneKindDefaults: [:]
     )
 
@@ -88,6 +92,15 @@ public struct WorkspaceConfig: Equatable, Sendable {
             panes.first(where: { $0.id == slot.paneID })!
         }
     }
+}
+
+public enum WorkspaceMetaKeyModifier: String, Equatable, Sendable, CaseIterable {
+    case shift
+    case control
+    case option
+    case command
+
+    public static let defaultMetaKey: [WorkspaceMetaKeyModifier] = [.command]
 }
 
 public struct PaneBoxEdges: Equatable, Sendable {
@@ -440,6 +453,7 @@ public final class WorkspaceConfigLoader {
             startupLayout: config.startupLayout,
             layoutFlashEnabled: config.layoutFlashEnabled,
             layoutFlashDuration: config.layoutFlashDuration,
+            metaKeyModifiers: config.metaKeyModifiers,
             paneKindDefaults: config.paneKindDefaults
         )
     }
@@ -563,7 +577,7 @@ struct WorkspaceConfigTOMLParser {
 
             switch table {
             case .root:
-                try insert(key: String(key), value: String(value), into: &root, line: lineNumber, table: "root", allowedKeys: ["version", "title", "startup_layout", "layout_flash_enabled", "layout_flash_duration"])
+                try insert(key: String(key), value: String(value), into: &root, line: lineNumber, table: "root", allowedKeys: ["version", "title", "startup_layout", "layout_flash_enabled", "layout_flash_duration", "meta_key"])
             case .paneDefault(let kind):
                 var fields = paneDefaultTables[kind] ?? [:]
                 try insert(key: String(key), value: String(value), into: &fields, line: lineNumber, table: "pane_defaults.\(kind.rawValue)", allowedKeys: ["border", "padding"])
@@ -601,6 +615,7 @@ struct WorkspaceConfigTOMLParser {
         guard layoutFlashDuration >= 0 else {
             throw WorkspaceConfigParseError.invalidValue(field: "layout_flash_duration", value: String(layoutFlashDuration))
         }
+        let metaKeyModifiers = try parseMetaKey(root["meta_key"], field: "meta_key") ?? WorkspaceMetaKeyModifier.defaultMetaKey
 
         let validatedLayouts = try validate(panes: panes, layouts: layouts, startupLayout: startupLayout)
         return WorkspaceConfig(
@@ -612,6 +627,7 @@ struct WorkspaceConfigTOMLParser {
             startupLayout: startupLayout,
             layoutFlashEnabled: layoutFlashEnabled,
             layoutFlashDuration: layoutFlashDuration,
+            metaKeyModifiers: metaKeyModifiers,
             paneKindDefaults: paneKindDefaults
         )
     }
@@ -928,6 +944,22 @@ struct WorkspaceConfigTOMLParser {
             }
         }
         return result
+    }
+
+    private func parseMetaKey(_ value: String?, field: String) throws -> [WorkspaceMetaKeyModifier]? {
+        guard let rawModifiers = try parseStringArray(value, field: field) else { return nil }
+        guard !rawModifiers.isEmpty else { throw WorkspaceConfigParseError.invalidValue(field: field, value: "[]") }
+        var modifiers: [WorkspaceMetaKeyModifier] = []
+        for rawModifier in rawModifiers {
+            guard let modifier = WorkspaceMetaKeyModifier(rawValue: rawModifier) else {
+                throw WorkspaceConfigParseError.invalidValue(field: field, value: rawModifier)
+            }
+            guard !modifiers.contains(modifier) else {
+                throw WorkspaceConfigParseError.invalidValue(field: field, value: "duplicate modifier \(rawModifier)")
+            }
+            modifiers.append(modifier)
+        }
+        return modifiers
     }
 
     private func parseStringArray(_ value: String?, field: String) throws -> [String]? {

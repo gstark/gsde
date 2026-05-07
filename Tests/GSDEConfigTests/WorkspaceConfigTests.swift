@@ -406,6 +406,30 @@ struct WorkspaceConfigTests {
         #expect(result.config.layoutFlashDuration == 2.5)
     }
 
+    @Test("meta key modifiers can be configured")
+    func metaKeyModifiersCanBeConfigured() throws {
+        let directory = try temporaryDirectory()
+        let configURL = directory.appendingPathComponent("meta-key.toml")
+        try """
+        version = 1
+        startup_layout = "work"
+        meta_key = ["control", "option"]
+
+        [[panes]]
+        id = "term"
+        kind = "terminal"
+
+        [[layouts]]
+        id = "work"
+        areas = ["term"]
+        """.write(to: configURL, atomically: true, encoding: .utf8)
+
+        let result = WorkspaceConfigLoader(environment: ["GSDE_CONFIG": configURL.path], homeDirectory: directory).load()
+
+        #expect(result.diagnostics.isEmpty)
+        #expect(result.config.metaKeyModifiers == [.control, .option])
+    }
+
     @Test("discovers project config from GSDE_PROJECT_DIR before home config")
     func discoversProjectConfig() throws {
         let home = try temporaryDirectory()
