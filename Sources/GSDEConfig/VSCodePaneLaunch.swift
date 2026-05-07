@@ -115,14 +115,10 @@ public struct VSCodePaneStateResolver: Sendable {
 
         let workspaceFolder: URL
         let gsdeConfigDirectory: URL
-        if let projectDirectory = Self.nonEmptyEnvironmentURL(named: "GSDE_PROJECT_DIR", in: environment) {
-            workspaceFolder = projectDirectory.standardizedFileURL
-            gsdeConfigDirectory = workspaceFolder
-                .appendingPathComponent(".config", isDirectory: true)
-                .appendingPathComponent("gsde", isDirectory: true)
-        } else if let configURL = configSource.url {
-            workspaceFolder = configURL.deletingLastPathComponent().standardizedFileURL
-            gsdeConfigDirectory = workspaceFolder
+        if let configURL = configSource.url {
+            workspaceFolder = Self.nonEmptyEnvironmentURL(named: "GSDE_PROJECT_DIR", in: environment)?.standardizedFileURL
+                ?? configURL.deletingLastPathComponent().standardizedFileURL
+            gsdeConfigDirectory = configURL.deletingLastPathComponent().standardizedFileURL
         } else {
             throw VSCodePaneLaunchError.missingConfigFile
         }

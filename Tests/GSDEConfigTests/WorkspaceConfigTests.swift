@@ -419,7 +419,8 @@ struct WorkspaceConfigTests {
             encoding: .utf8
         )
 
-        let projectConfigDirectory = project.appendingPathComponent(".config/gsde", isDirectory: true)
+        try "name = \"project-one\"\n".write(to: project.appendingPathComponent(".project.toml"), atomically: true, encoding: .utf8)
+        let projectConfigDirectory = home.appendingPathComponent(".config/gsde/project-one", isDirectory: true)
         try FileManager.default.createDirectory(at: projectConfigDirectory, withIntermediateDirectories: true)
         let projectConfigURL = projectConfigDirectory.appendingPathComponent("config.toml")
         try minimalConfig(startupLayout: "project").write(to: projectConfigURL, atomically: true, encoding: .utf8)
@@ -433,18 +434,16 @@ struct WorkspaceConfigTests {
         #expect(result.config.startupLayout == "project")
     }
 
-    @Test("discovers default config under home .config path")
-    func discoversHomeConfig() throws {
+    @Test("missing .project.toml reports setup instructions")
+    func missingProjectTomlReportsSetupInstructions() throws {
         let home = try temporaryDirectory()
-        let configDirectory = home.appendingPathComponent(".config/gsde", isDirectory: true)
-        try FileManager.default.createDirectory(at: configDirectory, withIntermediateDirectories: true)
-        let configURL = configDirectory.appendingPathComponent("config.toml")
-        try minimalConfig(startupLayout: "solo").write(to: configURL, atomically: true, encoding: .utf8)
 
         let result = WorkspaceConfigLoader(environment: [:], homeDirectory: home).load()
 
-        #expect(result.source == .userDefault(configURL))
-        #expect(result.config.startupPaneDefinitions.map(\.kind) == [.terminal])
+        #expect(result.source == .builtIn)
+        #expect(result.diagnostics.first?.severity == .error)
+        #expect(result.diagnostics.first?.message.contains(".project.toml") == true)
+        #expect(result.diagnostics.first?.message.contains("~/.config/gsde/<project-name>/config.toml") == true)
     }
 
     @Test("invalid file returns built-in config with structured diagnostic")
@@ -543,7 +542,8 @@ struct WorkspaceConfigTests {
         worker: swift run Worker
         """.write(to: project.appendingPathComponent("Procfile.dev"), atomically: true, encoding: .utf8)
 
-        let configDirectory = project.appendingPathComponent(".config/gsde", isDirectory: true)
+        try "name = \"procfile-project\"\n".write(to: project.appendingPathComponent(".project.toml"), atomically: true, encoding: .utf8)
+        let configDirectory = project.appendingPathComponent(".config/gsde/procfile-project", isDirectory: true)
         try FileManager.default.createDirectory(at: configDirectory, withIntermediateDirectories: true)
         let configURL = configDirectory.appendingPathComponent("config.toml")
         try """
@@ -930,15 +930,15 @@ struct WorkspaceConfigTests {
         #expect(lShaped.diagnostics.first?.message.contains("pane a areas are not a single rectangle") == true)
     }
 
-    @Test("built-in config is used when no file exists")
-    func fallsBackToBuiltInWhenNoFileExists() throws {
+    @Test("built-in config is returned with diagnostic when project metadata is missing")
+    func fallsBackToBuiltInWhenProjectMetadataMissing() throws {
         let directory = try temporaryDirectory()
 
         let result = WorkspaceConfigLoader(environment: [:], homeDirectory: directory).load()
 
         #expect(result.source == .builtIn)
         #expect(result.config == .builtIn)
-        #expect(result.diagnostics.isEmpty)
+        #expect(result.diagnostics.first?.severity == .error)
     }
 
     private func minimalConfig(startupLayout: String) -> String {

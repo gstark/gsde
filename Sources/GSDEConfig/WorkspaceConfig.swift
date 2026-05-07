@@ -311,26 +311,73 @@ public final class WorkspaceConfigLoader {
             return loadFile(at: url, source: .environment(url))
         }
 
-        if let projectPath = environment["GSDE_PROJECT_DIR"], !projectPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let projectURL = URL(fileURLWithPath: (projectPath as NSString).expandingTildeInPath, isDirectory: true)
-            let projectDefaultURL = projectURL
+        let projectURL = projectDirectory()
+        let projectFileURL = projectURL.appendingPathComponent(".project.toml")
+        guard fileManager.fileExists(atPath: projectFileURL.path) else {
+            return missingProjectFileResult(projectDirectory: projectURL, projectFileURL: projectFileURL)
+        }
+
+        do {
+            let projectName = try Self.projectName(fromProjectFileAt: projectFileURL)
+            let configURL = homeDirectory
                 .appendingPathComponent(".config", isDirectory: true)
                 .appendingPathComponent("gsde", isDirectory: true)
+                .appendingPathComponent(projectName, isDirectory: true)
                 .appendingPathComponent("config.toml")
-            if fileManager.fileExists(atPath: projectDefaultURL.path) {
-                return loadFile(at: projectDefaultURL, source: .projectDefault(projectDefaultURL))
+            guard fileManager.fileExists(atPath: configURL.path) else {
+                let diagnostic = WorkspaceConfigDiagnostic(
+                    severity: .error,
+                    message: "No GSDE config found for project '\(projectName)'. Create \(configURL.path).",
+                    source: .projectDefault(configURL)
+                )
+                return WorkspaceConfigLoadResult(config: .builtIn, source: .builtIn, diagnostics: [diagnostic])
             }
+            return loadFile(at: configURL, source: .projectDefault(configURL))
+        } catch {
+            let diagnostic = WorkspaceConfigDiagnostic(
+                severity: .error,
+                message: "Could not read project metadata from \(projectFileURL.path): \(error)",
+                source: .projectDefault(projectFileURL)
+            )
+            return WorkspaceConfigLoadResult(config: .builtIn, source: .builtIn, diagnostics: [diagnostic])
         }
+    }
 
-        let defaultURL = homeDirectory
-            .appendingPathComponent(".config", isDirectory: true)
-            .appendingPathComponent("gsde", isDirectory: true)
-            .appendingPathComponent("config.toml")
-        if fileManager.fileExists(atPath: defaultURL.path) {
-            return loadFile(at: defaultURL, source: .userDefault(defaultURL))
+    private func projectDirectory() -> URL {
+        if let projectPath = environment["GSDE_PROJECT_DIR"]?.trimmingCharacters(in: .whitespacesAndNewlines), !projectPath.isEmpty {
+            return URL(fileURLWithPath: (projectPath as NSString).expandingTildeInPath, isDirectory: true).standardizedFileURL
         }
+        return URL(fileURLWithPath: fileManager.currentDirectoryPath, isDirectory: true).standardizedFileURL
+    }
 
-        return WorkspaceConfigLoadResult(config: .builtIn, source: .builtIn, diagnostics: [])
+    private func missingProjectFileResult(projectDirectory: URL, projectFileURL: URL) -> WorkspaceConfigLoadResult {
+        let diagnostic = WorkspaceConfigDiagnostic(
+            severity: .error,
+            message: "GSDE requires a .project.toml file in \(projectDirectory.path). Create one with: name = \"<project-name>\". Then put GSDE config at ~/.config/gsde/<project-name>/config.toml.",
+            source: .projectDefault(projectFileURL)
+        )
+        return WorkspaceConfigLoadResult(config: .builtIn, source: .builtIn, diagnostics: [diagnostic])
+    }
+
+    private static func projectName(fromProjectFileAt url: URL) throws -> String {
+        let text = try String(contentsOf: url, encoding: .utf8)
+        for rawLine in text.split(whereSeparator: { $0.isNewline }) {
+            let line = rawLine.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !line.isEmpty else { continue }
+            let parts = line.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+            guard parts.count == 2 else { continue }
+            let key = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard key == "name" || key == "project-name" || key == "project_name" else { continue }
+            let value = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard value.count >= 2, value.first == "\"", value.last == "\"" else { break }
+            let name = String(value.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty, name.range(of: #"^[A-Za-z0-9._-]+$"#, options: .regularExpression) != nil {
+                return name
+            }
+            break
+        }
+        throw WorkspaceConfigParseError.invalidValue(field: ".project.toml.name", value: "expected non-empty name using letters, numbers, dot, underscore, or dash")
     }
 
     private func loadFile(at url: URL, source: WorkspaceConfigSource) -> WorkspaceConfigLoadResult {

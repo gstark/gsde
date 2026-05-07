@@ -1933,6 +1933,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         installLayoutSwitcherShortcutMonitor()
 
         let loadedConfig = WorkspaceConfigLoader().load()
+        let hasConfigErrors = loadedConfig.diagnostics.contains { $0.severity == .error }
+        if hasConfigErrors {
+            for diagnostic in loadedConfig.diagnostics {
+                Self.logConfig("\(diagnostic)")
+            }
+            showConfigurationErrorAndTerminate(loadedConfig.diagnostics)
+            return
+        }
+
         WorkspaceDisplayTitle.configure(loadedConfig.config.title)
         initializeChromiumIfAvailable(rootCachePath: Self.chromiumRootDirectory(for: loadedConfig.source))
 
@@ -1963,6 +1972,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    private func showConfigurationErrorAndTerminate(_ diagnostics: [WorkspaceConfigDiagnostic]) {
+        let messages = diagnostics.map(\.message).joined(separator: "\n")
+        let alert = NSAlert()
+        alert.messageText = "GSDE cannot launch without project configuration"
+        alert.informativeText = messages.isEmpty
+            ? "Create .project.toml in your project and place config.toml under ~/.config/gsde/<project-name>/config.toml."
+            : messages
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Quit")
+        alert.runModal()
+        NSApp.terminate(nil)
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -2112,14 +2134,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // CEF 120+ requires every persistent CefRequestContext cache path to sit under
         // CefSettings.root_cache_path. Keep the root at the shared chromium directory so
         // VS Code pane caches and any other Chromium profiles can coexist below it.
-        if let projectDirectory = nonEmptyEnvironmentDirectory(named: "GSDE_PROJECT_DIR") {
-            return projectDirectory
-                .appendingPathComponent(".config", isDirectory: true)
-                .appendingPathComponent("gsde", isDirectory: true)
-                .appendingPathComponent("chromium", isDirectory: true)
-                .standardizedFileURL
-        }
-
         if let configURL = source.url {
             return configURL
                 .deletingLastPathComponent()
