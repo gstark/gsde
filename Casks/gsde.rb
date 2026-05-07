@@ -1,6 +1,6 @@
 cask "gsde" do
-  version "0.1.14"
-  sha256 "4997ba0f5ce2ab89d9dc11d6cce8de4e8518ac74ece37301ea0f0554f68408c4"
+  version "0.1.15"
+  sha256 "d21ee0ec819bf21a4bd1dd0796a60ad7f60eebe1ec0905f92a105fa0c7a0eb2f"
 
   url "https://github.com/gstark/gsde/releases/download/v#{version}/GSDE-#{version}.zip"
   name "GSDE"
@@ -11,11 +11,6 @@ cask "gsde" do
 
   app "GSDE.app"
   binary "GSDE.app/Contents/Resources/bin/gsde"
-
-  postflight do
-    system_command "/usr/bin/defaults",
-                   args: ["write", "personal.gsde.app", "ApplePressAndHoldEnabled", "-bool", "false"]
-  end
 
   caveats <<~EOS
     If you installed the earlier formula-based GSDE package, remove it first:
