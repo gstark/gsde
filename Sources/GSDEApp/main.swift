@@ -692,6 +692,8 @@ final class VSCodePaneView: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor(calibratedWhite: 0.08, alpha: 1).cgColor
         browserContainer.translatesAutoresizingMaskIntoConstraints = false
+        browserContainer.wantsLayer = true
+        browserContainer.layer?.backgroundColor = NSColor(calibratedWhite: 0.08, alpha: 1).cgColor
         overlayContainer.translatesAutoresizingMaskIntoConstraints = false
         overlayContainer.wantsLayer = true
         overlayContainer.layer?.backgroundColor = NSColor(calibratedWhite: 0.08, alpha: 1).cgColor
@@ -938,6 +940,8 @@ final class VSCodePaneView: NSView {
             nativeView.removeFromSuperview()
             browserContainer.addSubview(nativeView)
         }
+        nativeView.wantsLayer = true
+        nativeView.layer?.backgroundColor = NSColor(calibratedWhite: 0.08, alpha: 1).cgColor
         nativeView.frame = browserContainer.bounds
         nativeView.autoresizingMask = [.width, .height]
         cefNativeView = nativeView

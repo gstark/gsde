@@ -313,6 +313,11 @@ int gsde_chromium_initialize(const char *root_cache_path, const char *cache_path
     settings.no_sandbox = 1;
     settings.external_message_pump = 0;
     settings.multi_threaded_message_loop = 0;
+    // CEF defaults to opaque white while a document is loading. GSDE embeds
+    // code-server in a dark UI, so keep the browser surface dark during the
+    // pre-document/theme gap to avoid a white flash when the VS Code pane is
+    // revealed during layout switches.
+    settings.background_color = CefColorSetARGB(0xFF, 0x14, 0x14, 0x14);
 
     std::string normalized_root_cache_path;
     if (root_cache_path && root_cache_path[0] != '\0') {
@@ -1490,6 +1495,10 @@ gsde_chromium_browser_t *gsde_chromium_browser_create(void *parent_nsview, int w
     cef_browser_settings_t browser_settings;
     memset(&browser_settings, 0, sizeof(browser_settings));
     browser_settings.size = sizeof(browser_settings);
+    // Match the app/VS Code dark background before the page paints. Without
+    // this, CEF inherits its opaque-white default and flashes white between
+    // attaching the native browser view and VS Code applying its theme.
+    browser_settings.background_color = CefColorSetARGB(0xFF, 0x14, 0x14, 0x14);
 
     ScopedCefString url(initial_url ? initial_url : "about:blank");
 
