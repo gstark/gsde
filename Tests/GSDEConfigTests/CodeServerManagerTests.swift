@@ -31,7 +31,10 @@ struct CodeServerManagerTests {
         #expect(session.serverURL.port != 0)
         #expect(launched.executableURL == executableURL)
         #expect(launched.serverURL == session.serverURL)
-        #expect(launched.environment == [:])
+        #expect(launched.environment == [
+            "PWD": project.path,
+            "VSCODE_CWD": project.path
+        ])
         #expect(launched.arguments.prefix(2) == ["--bind-addr", "127.0.0.1:\(session.serverURL.port!)"])
         #expect(FileManager.default.fileExists(atPath: launched.stateDirectories.codeServerUserDataDirectory.path))
         #expect(FileManager.default.fileExists(atPath: launched.stateDirectories.codeServerExtensionsDirectory.path))

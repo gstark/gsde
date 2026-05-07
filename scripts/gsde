@@ -41,10 +41,17 @@ if [ "$#" -gt 1 ]; then
 fi
 
 PROJECT_DIR="${1:-.}"
+REQUESTED_PROJECT_DIR="$PROJECT_DIR"
 if ! PROJECT_DIR=$(cd "$PROJECT_DIR" 2>/dev/null && pwd -P); then
   echo "gsde: project directory not found: ${1:-.}" >&2
   exit 66
 fi
+
+DEBUG_LOG="/tmp/gsde-debug.log"
+gsde_debug_log() {
+  printf '%s GSDE launcher: %s\n' "$(date)" "$*" >> "$DEBUG_LOG" 2>/dev/null || true
+}
+gsde_debug_log "resolved project directory: requested=$REQUESTED_PROJECT_DIR, resolved=$PROJECT_DIR, pwd=$PWD"
 
 project_name_from_file() {
   awk -F= '
@@ -233,13 +240,17 @@ fi
 
 STATE_SCOPE="GSDE.Project.$(printf '%s' "$PROJECT_DIR" | shasum -a 256 | awk '{print substr($1,1,16)}')"
 
+gsde_debug_log "resolved app path: app=$APP_PATH, stateScope=$STATE_SCOPE, validate=$VALIDATE"
+
 if [ "$VALIDATE" -eq 1 ]; then
   APP_BINARY="$APP_PATH/Contents/MacOS/GSDE"
   if [ ! -x "$APP_BINARY" ]; then
     echo "gsde: could not find executable app binary at $APP_BINARY" >&2
     exit 69
   fi
+  gsde_debug_log "exec validation app binary: binary=$APP_BINARY, GSDE_PROJECT_DIR=$PROJECT_DIR, GSDE_STATE_SCOPE=$STATE_SCOPE"
   exec env GSDE_VALIDATE_CONFIG=1 GSDE_PROJECT_DIR="$PROJECT_DIR" GSDE_STATE_SCOPE="$STATE_SCOPE" "$APP_BINARY"
 fi
 
+gsde_debug_log "open app: app=$APP_PATH, GSDE_PROJECT_DIR=$PROJECT_DIR, GSDE_STATE_SCOPE=$STATE_SCOPE"
 exec open -n --env GSDE_PROJECT_DIR="$PROJECT_DIR" --env GSDE_STATE_SCOPE="$STATE_SCOPE" "$APP_PATH"

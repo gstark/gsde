@@ -1,6 +1,22 @@
 import Darwin
 import Foundation
 
+enum VSCodePaneDebugLog {
+    static let url = URL(fileURLWithPath: "/tmp/gsde-debug.log")
+
+    static func write(_ line: String) {
+        let text = "\(Date()) \(line)\n"
+        guard let data = text.data(using: .utf8) else { return }
+        if !FileManager.default.fileExists(atPath: url.path) {
+            FileManager.default.createFile(atPath: url.path, contents: nil)
+        }
+        guard let handle = try? FileHandle(forWritingTo: url) else { return }
+        defer { try? handle.close() }
+        _ = try? handle.seekToEnd()
+        try? handle.write(contentsOf: data)
+    }
+}
+
 public enum VSCodePaneLaunchError: Error, Equatable, CustomStringConvertible, LocalizedError {
     case missingConfigFile
     case emptyPaneID
@@ -59,6 +75,7 @@ public struct CodeServerBundleResolver: Sendable {
         guard fileManager.isExecutableFile(atPath: executableURL.path) else {
             throw VSCodePaneLaunchError.bundledCodeServerNotExecutable(executableURL)
         }
+        VSCodePaneDebugLog.write("resolved bundled code-server executable: resourcesDirectory=\(resourcesDirectory.path), executable=\(executableURL.path)")
         return executableURL
     }
 }
@@ -191,20 +208,7 @@ public struct VSCodePaneStateResolver: Sendable {
     fileprivate static func debugLog(_ message: String) {
         let line = "GSDE VSCodePaneStateResolver: \(message)"
         NSLog("%@", line)
-        appendDebugLog(line)
-    }
-
-    private static func appendDebugLog(_ line: String) {
-        let url = URL(fileURLWithPath: "/tmp/gsde-debug.log")
-        let text = "\(Date()) \(line)\n"
-        guard let data = text.data(using: .utf8) else { return }
-        if !FileManager.default.fileExists(atPath: url.path) {
-            FileManager.default.createFile(atPath: url.path, contents: nil)
-        }
-        guard let handle = try? FileHandle(forWritingTo: url) else { return }
-        defer { try? handle.close() }
-        _ = try? handle.seekToEnd()
-        try? handle.write(contentsOf: data)
+        VSCodePaneDebugLog.write(line)
     }
 
     private static func pathComponent(forPaneID paneID: String) -> String {
@@ -278,14 +282,17 @@ public struct CodeServerLaunchBuilder: Sendable {
             "--disable-workspace-trust",
             stateDirectories.workspaceFolder.path
         ]
-        let serverURL = try Self.serverURL(host: normalizedBindHost, port: port)
+        let serverURL = try Self.serverURL(host: normalizedBindHost, port: port, workspaceFolder: stateDirectories.workspaceFolder)
         VSCodePaneStateResolver.debugLog(
             "code-server launch: executable=\(executableURL.path), serverURL=\(serverURL.absoluteString), currentDirectory=\(stateDirectories.workspaceFolder.path), arguments=\(arguments)"
         )
         return CodeServerLaunchConfiguration(
             executableURL: executableURL,
             arguments: arguments,
-            environment: [:],
+            environment: [
+                "PWD": stateDirectories.workspaceFolder.path,
+                "VSCODE_CWD": stateDirectories.workspaceFolder.path
+            ],
             serverURL: serverURL,
             stateDirectories: stateDirectories
         )
@@ -319,12 +326,13 @@ public struct CodeServerLaunchBuilder: Sendable {
         return "\(addressHost):\(port)"
     }
 
-    private static func serverURL(host: String, port: UInt16) throws -> URL {
+    private static func serverURL(host: String, port: UInt16, workspaceFolder: URL) throws -> URL {
         var components = URLComponents()
         components.scheme = "http"
         components.host = host.contains(":") ? "[\(host)]" : host
         components.port = Int(port)
         components.path = "/"
+        components.queryItems = [URLQueryItem(name: "folder", value: workspaceFolder.path)]
         guard let url = components.url else {
             throw VSCodePaneLaunchError.invalidBindHost(host)
         }

@@ -169,6 +169,9 @@ public struct DefaultCodeServerProcessLauncher: CodeServerProcessLaunching {
         process.arguments = configuration.arguments
         process.environment = ProcessInfo.processInfo.environment.merging(configuration.environment) { _, new in new }
         process.currentDirectoryURL = configuration.stateDirectories.workspaceFolder
+        VSCodePaneDebugLog.write(
+            "launching code-server process: executable=\(configuration.executableURL.path), currentDirectory=\(configuration.stateDirectories.workspaceFolder.path), environment=\(configuration.environment), serverURL=\(configuration.serverURL.absoluteString), arguments=\(configuration.arguments), userData=\(configuration.stateDirectories.codeServerUserDataDirectory.path), extensions=\(configuration.stateDirectories.codeServerExtensionsDirectory.path), cefCache=\(configuration.stateDirectories.cefCacheDirectory.path)"
+        )
 
         let stdout = Pipe()
         let stderr = Pipe()
@@ -187,12 +190,15 @@ public struct DefaultCodeServerProcessLauncher: CodeServerProcessLaunching {
             stderr.fileHandleForReading.readabilityHandler = nil
             emitRemainingText(from: stdout.fileHandleForReading, stream: .stdout, outputHandler: outputHandler)
             emitRemainingText(from: stderr.fileHandleForReading, stream: .stderr, outputHandler: outputHandler)
+            VSCodePaneDebugLog.write("code-server process terminated: executable=\(configuration.executableURL.path), pid=\(process.processIdentifier), status=\(process.terminationStatus)")
             terminationHandler(process.terminationStatus)
         }
 
         do {
             try process.run()
+            VSCodePaneDebugLog.write("code-server process started: executable=\(configuration.executableURL.path), pid=\(process.processIdentifier), serverURL=\(configuration.serverURL.absoluteString)")
         } catch {
+            VSCodePaneDebugLog.write("code-server process launch failed: executable=\(configuration.executableURL.path), error=\(error.localizedDescription)")
             stdout.fileHandleForReading.readabilityHandler = nil
             stderr.fileHandleForReading.readabilityHandler = nil
             throw CodeServerManagerError.processLaunchFailed(error.localizedDescription)
@@ -277,12 +283,14 @@ public actor CodeServerManager {
     }
 
     public func start(_ request: CodeServerStartRequest) async throws -> ManagedCodeServerSession {
+        VSCodePaneDebugLog.write("code-server manager start requested: paneID=\(request.paneID), configSource=\(request.configSource.url?.path ?? "built-in"), explicitExecutable=\(request.executableURL?.path ?? "<bundled>"), profile=\(request.profileMode.rawValue), readinessTimeout=\(request.readinessTimeout)")
         if runningByPaneID[request.paneID] != nil {
             throw CodeServerManagerError.paneAlreadyRunning(request.paneID)
         }
         exitedByPaneID[request.paneID] = nil
 
         let port = try Self.reserveUnusedLocalhostPort()
+        VSCodePaneDebugLog.write("reserved code-server localhost port: paneID=\(request.paneID), port=\(port)")
         return try await start(request, usingReservedPort: port)
     }
 
@@ -323,12 +331,14 @@ public actor CodeServerManager {
         portReservationTransferredToRunningProcess = true
 
         do {
+            VSCodePaneDebugLog.write("waiting for code-server readiness: paneID=\(request.paneID), url=\(configuration.serverURL.absoluteString), timeout=\(request.readinessTimeout)")
             try await readinessChecker.waitUntilReady(
                 url: configuration.serverURL,
                 process: handle,
                 timeout: request.readinessTimeout,
                 diagnostics: { outputBuffer.diagnostics }
             )
+            VSCodePaneDebugLog.write("code-server readiness succeeded: paneID=\(request.paneID), url=\(configuration.serverURL.absoluteString)")
             try Task.checkCancellation()
         } catch let error as CodeServerManagerError {
             stopRunningProcessIfPresent(paneID: request.paneID)
@@ -350,6 +360,7 @@ public actor CodeServerManager {
             )
         }
 
+        VSCodePaneDebugLog.write("code-server session ready: paneID=\(request.paneID), url=\(configuration.serverURL.absoluteString), workspaceFolder=\(configuration.stateDirectories.workspaceFolder.path)")
         return ManagedCodeServerSession(
             paneID: request.paneID,
             serverURL: configuration.serverURL,

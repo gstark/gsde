@@ -192,8 +192,11 @@ struct WorkspaceConfigTests {
 
         let paneRoot = project.appendingPathComponent(".config/gsde/panes/editor", isDirectory: true)
         #expect(launch.executableURL == executableURL)
-        #expect(launch.serverURL.absoluteString == "http://127.0.0.1:49152/")
-        #expect(launch.environment == [:])
+        #expect(launch.serverURL.absoluteString == "http://127.0.0.1:49152/?folder=\(project.path.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)")
+        #expect(launch.environment == [
+            "PWD": project.path,
+            "VSCODE_CWD": project.path
+        ])
         #expect(launch.arguments == [
             "--bind-addr", "127.0.0.1:49152",
             "--auth", "none",
@@ -302,7 +305,7 @@ struct WorkspaceConfigTests {
             port: 3000
         )
 
-        #expect(launch.serverURL.absoluteString == "http://[::1]:3000/")
+        #expect(launch.serverURL.absoluteString == "http://[::1]:3000/?folder=\(project.path.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)")
         #expect(launch.arguments.prefix(2) == ["--bind-addr", "[::1]:3000"])
     }
 
