@@ -145,7 +145,7 @@ public struct VSCodePaneStateResolver: Sendable {
             .appendingPathComponent("extensions", isDirectory: true)
             .standardizedFileURL
 
-        return VSCodePaneStateDirectories(
+        let directories = VSCodePaneStateDirectories(
             paneID: trimmedPaneID,
             workspaceFolder: workspaceFolder,
             gsdeConfigDirectory: gsdeConfigDirectory.standardizedFileURL,
@@ -158,6 +158,20 @@ public struct VSCodePaneStateResolver: Sendable {
                 .appendingPathComponent(Self.pathComponent(forPaneID: trimmedPaneID), isDirectory: true)
                 .standardizedFileURL
         )
+        Self.debugLog(
+            "resolved VS Code pane directories: " +
+            "paneID=\(directories.paneID), " +
+            "profile=\(profileMode.rawValue), " +
+            "configSource=\(configSource.url?.path ?? "built-in"), " +
+            "GSDE_PROJECT_DIR=\(environment["GSDE_PROJECT_DIR"] ?? "<unset>"), " +
+            "PWD=\(environment["PWD"] ?? "<unset>"), " +
+            "workspaceFolder=\(directories.workspaceFolder.path), " +
+            "gsdeConfigDirectory=\(directories.gsdeConfigDirectory.path), " +
+            "userData=\(directories.codeServerUserDataDirectory.path), " +
+            "extensions=\(directories.codeServerExtensionsDirectory.path), " +
+            "cefCache=\(directories.cefCacheDirectory.path)"
+        )
+        return directories
     }
 
     private static func homeDirectory(in environment: [String: String]) -> URL {
@@ -172,6 +186,25 @@ public struct VSCodePaneStateResolver: Sendable {
             return nil
         }
         return URL(fileURLWithPath: (value as NSString).expandingTildeInPath, isDirectory: true)
+    }
+
+    fileprivate static func debugLog(_ message: String) {
+        let line = "GSDE VSCodePaneStateResolver: \(message)"
+        NSLog("%@", line)
+        appendDebugLog(line)
+    }
+
+    private static func appendDebugLog(_ line: String) {
+        let url = URL(fileURLWithPath: "/tmp/gsde-debug.log")
+        let text = "\(Date()) \(line)\n"
+        guard let data = text.data(using: .utf8) else { return }
+        if !FileManager.default.fileExists(atPath: url.path) {
+            FileManager.default.createFile(atPath: url.path, contents: nil)
+        }
+        guard let handle = try? FileHandle(forWritingTo: url) else { return }
+        defer { try? handle.close() }
+        _ = try? handle.seekToEnd()
+        try? handle.write(contentsOf: data)
     }
 
     private static func pathComponent(forPaneID paneID: String) -> String {
@@ -246,6 +279,9 @@ public struct CodeServerLaunchBuilder: Sendable {
             stateDirectories.workspaceFolder.path
         ]
         let serverURL = try Self.serverURL(host: normalizedBindHost, port: port)
+        VSCodePaneStateResolver.debugLog(
+            "code-server launch: executable=\(executableURL.path), serverURL=\(serverURL.absoluteString), currentDirectory=\(stateDirectories.workspaceFolder.path), arguments=\(arguments)"
+        )
         return CodeServerLaunchConfiguration(
             executableURL: executableURL,
             arguments: arguments,

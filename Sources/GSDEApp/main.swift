@@ -1949,6 +1949,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSApp.presentationOptions = [.hideDock, .hideMenuBar]
 
         let loadedConfig = WorkspaceConfigLoader().load()
+        Self.logConfig(
+            "startup: source=\(loadedConfig.source.url?.path ?? "built-in default"), " +
+            "GSDE_PROJECT_DIR=\(ProcessInfo.processInfo.environment["GSDE_PROJECT_DIR"] ?? "<unset>"), " +
+            "PWD=\(ProcessInfo.processInfo.environment["PWD"] ?? "<unset>"), " +
+            "title=\(loadedConfig.config.title ?? "<nil>"), " +
+            "panes=\(loadedConfig.config.panes.map { "\($0.id):\($0.kind.rawValue)" }.joined(separator: ",")), " +
+            "startupLayout=\(loadedConfig.config.startupLayout)"
+        )
         metaKeyModifierFlags = loadedConfig.config.metaKeyEventModifierFlags
         installMainMenu()
         installLayoutSwitcherShortcutMonitor()
@@ -2200,7 +2208,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     private static func logConfig(_ message: String) {
-        FileHandle.standardError.write(Data("GSDE config: \(message)\n".utf8))
+        let line = "GSDE config: \(message)"
+        NSLog("%@", line)
+        FileHandle.standardError.write(Data("\(line)\n".utf8))
+        appendDebugLog(line)
+    }
+
+    private static func appendDebugLog(_ line: String) {
+        let url = URL(fileURLWithPath: "/tmp/gsde-debug.log")
+        let text = "\(Date()) \(line)\n"
+        guard let data = text.data(using: .utf8) else { return }
+        if !FileManager.default.fileExists(atPath: url.path) {
+            FileManager.default.createFile(atPath: url.path, contents: nil)
+        }
+        guard let handle = try? FileHandle(forWritingTo: url) else { return }
+        defer { try? handle.close() }
+        _ = try? handle.seekToEnd()
+        try? handle.write(contentsOf: data)
     }
 
     private static func frameCoveringAllDisplays() -> NSRect {
