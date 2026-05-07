@@ -845,8 +845,8 @@ final class VSCodePaneView: NSView {
                 await pendingStopTask?.value
                 try Task.checkCancellation()
                 let shouldStart = await MainActor.run { [weak self] in
-                    guard let self, startTaskID == taskID, stopGeneration == pendingStopGeneration else { return false }
-                    stopTask = nil
+                    guard let self, self.startTaskID == taskID, self.stopGeneration == pendingStopGeneration else { return false }
+                    self.stopTask = nil
                     return true
                 }
                 guard shouldStart else { return }
@@ -854,14 +854,14 @@ final class VSCodePaneView: NSView {
                 let session = try await codeServerManager.start(CodeServerStartRequest(paneID: paneID, configSource: configSource, profileMode: profileMode))
                 try Task.checkCancellation()
                 let shouldStopSession = await MainActor.run { [weak self] in
-                    guard let self, startTaskID == taskID else { return true }
-                    currentServerURL = session.serverURL
-                    currentCEFCacheDirectory = session.launchConfiguration.stateDirectories.cefCacheDirectory
-                    hasStartedSession = true
-                    startTask = nil
-                    startTaskID = nil
-                    guard window != nil else { return true }
-                    return attachBrowserToStartedSessionOrFail()
+                    guard let self, self.startTaskID == taskID else { return true }
+                    self.currentServerURL = session.serverURL
+                    self.currentCEFCacheDirectory = session.launchConfiguration.stateDirectories.cefCacheDirectory
+                    self.hasStartedSession = true
+                    self.startTask = nil
+                    self.startTaskID = nil
+                    guard self.window != nil else { return true }
+                    return self.attachBrowserToStartedSessionOrFail()
                 }
                 if shouldStopSession {
                     await codeServerManager.stop(paneID: paneID)
@@ -869,22 +869,22 @@ final class VSCodePaneView: NSView {
             } catch is CancellationError {
                 let shouldStop = await MainActor.run { [weak self] in
                     guard let self else { return true }
-                    let taskIsCurrent = startTaskID == taskID
+                    let taskIsCurrent = self.startTaskID == taskID
                     if taskIsCurrent {
-                        startTask = nil
-                        startTaskID = nil
+                        self.startTask = nil
+                        self.startTaskID = nil
                     }
-                    return taskIsCurrent || window == nil
+                    return taskIsCurrent || self.window == nil
                 }
                 if shouldStop {
                     await codeServerManager.stop(paneID: paneID)
                 }
             } catch {
                 await MainActor.run { [weak self] in
-                    guard let self, startTaskID == taskID else { return }
-                    showFailure(title: "VS Code pane failed", detail: error.localizedDescription)
-                    startTask = nil
-                    startTaskID = nil
+                    guard let self, self.startTaskID == taskID else { return }
+                    self.showFailure(title: "VS Code pane failed", detail: error.localizedDescription)
+                    self.startTask = nil
+                    self.startTaskID = nil
                 }
             }
         }
@@ -1032,9 +1032,9 @@ final class VSCodePaneView: NSView {
                     continue
                 }
                 await MainActor.run { [weak self] in
-                    guard let self, window != nil else { return }
-                    statusTask = nil
-                    showFailure(
+                    guard let self, self.window != nil else { return }
+                    self.statusTask = nil
+                    self.showFailure(
                         title: "VS Code pane crashed",
                         detail: Self.crashDetail(exitCode: exitCode, diagnostics: diagnostics)
                     )
@@ -2551,7 +2551,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         precondition(globalSelectors.allSatisfy { !shouldDisableMenuActionForVSCodePassthrough($0) })
     }
 
-    private static func shouldDisableMenuActionForVSCodePassthrough(_ action: Selector?) -> Bool {
+    nonisolated private static func shouldDisableMenuActionForVSCodePassthrough(_ action: Selector?) -> Bool {
         switch action {
         case #selector(newBrowserPane(_:)),
              #selector(newTerminalPane(_:)),
