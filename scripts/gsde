@@ -3,11 +3,13 @@ set -eu
 
 usage() {
   cat <<'USAGE'
-Usage: gsde [--validate] [project-directory]
+Usage: gsde [init] [--validate] [project-directory]
 
 Launch GSDE for the current working directory, or for project-directory when
-provided. GSDE will load .config/gsde/config.toml from that project directory
-when the file exists.
+provided. GSDE will load the project's config from ~/.config/gsde/<project-name>/config.toml.
+
+Commands:
+  init         Initialize .project.toml and GSDE config for a project.
 
 Options:
   --validate   Validate the resolved workspace config and exit without launching.
@@ -19,6 +21,12 @@ USAGE
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
   usage
   exit 0
+fi
+
+COMMAND="launch"
+if [ "${1:-}" = "init" ]; then
+  COMMAND="init"
+  shift
 fi
 
 VALIDATE=0
@@ -36,6 +44,156 @@ PROJECT_DIR="${1:-.}"
 if ! PROJECT_DIR=$(cd "$PROJECT_DIR" 2>/dev/null && pwd -P); then
   echo "gsde: project directory not found: ${1:-.}" >&2
   exit 66
+fi
+
+project_name_from_file() {
+  awk -F= '
+    /^[[:space:]]*(name|project-name|project_name)[[:space:]]*=/ {
+      value=$2
+      sub(/^[[:space:]]*"/, "", value)
+      sub(/"[[:space:]]*(#.*)?$/, "", value)
+      print value
+      exit
+    }
+  ' "$1"
+}
+
+sanitize_project_name() {
+  printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '-' | sed 's/^-*//; s/-*$//; s/--*/-/g'
+}
+
+prompt_for_project_file() {
+  project_file="$PROJECT_DIR/.project.toml"
+  default_name=$(sanitize_project_name "$(basename "$PROJECT_DIR")")
+  if [ -z "$default_name" ]; then
+    default_name="project"
+  fi
+
+  if [ ! -t 0 ]; then
+    echo "gsde init: missing $project_file and cannot prompt without a terminal" >&2
+    exit 64
+  fi
+
+  printf 'Create %s? [Y/n] ' "$project_file" >&2
+  read answer
+  case "$answer" in
+    n|N|no|NO|No) echo "gsde init: cancelled" >&2; exit 1 ;;
+  esac
+
+  printf 'Project name [%s]: ' "$default_name" >&2
+  read entered_name
+  project_name=${entered_name:-$default_name}
+  project_name=$(sanitize_project_name "$project_name")
+  if [ -z "$project_name" ]; then
+    echo "gsde init: project name cannot be empty" >&2
+    exit 64
+  fi
+  printf 'name = "%s"\n' "$project_name" > "$project_file"
+  echo "Created $project_file"
+}
+
+pane_id_for_process() {
+  printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '-' | sed 's/^-*//; s/-*$//; s/--*/-/g; s/^$/process/'
+}
+
+write_procfile_config() {
+  procfile="$PROJECT_DIR/Procfile.dev"
+  config_file="$1"
+  tmp_file="$config_file.tmp.$$"
+
+  processes=$(awk -F: '
+    /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+    /^[^:]+:/ {
+      name=$1
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+      if (name != "") print name
+    }
+  ' "$procfile")
+
+  if [ -z "$processes" ]; then
+    echo "gsde init: Procfile.dev has no processes; leaving config.toml unchanged"
+    return
+  fi
+
+  {
+    printf 'version = 1\n'
+    printf 'title = "%s"\n' "$project_name"
+    printf 'startup_layout = "dev"\n\n'
+
+    for process in $processes; do
+      pane_id=$(pane_id_for_process "$process")
+      printf '[[panes]]\n'
+      printf 'id = "terminal.%s"\n' "$pane_id"
+      printf 'kind = "terminal"\n'
+      printf 'procfile = "Procfile.dev"\n'
+      printf 'process = "%s"\n\n' "$process"
+    done
+
+    printf '[[panes]]\n'
+    printf 'id = "browser.app"\n'
+    printf 'kind = "browser"\n'
+    printf 'url = "http://localhost:3000"\n\n'
+
+    process_count=$(printf '%s\n' "$processes" | wc -l | tr -d ' ')
+    terminal_columns=1
+    while [ $((terminal_columns * terminal_columns)) -lt "$process_count" ]; do
+      terminal_columns=$((terminal_columns + 1))
+    done
+    terminal_rows=$(((process_count + terminal_columns - 1) / terminal_columns))
+
+    printf '[[layouts]]\n'
+    printf 'id = "dev"\n'
+    printf 'areas = [\n'
+    row=1
+    while [ "$row" -le "$terminal_rows" ]; do
+      printf '  "'
+      column=1
+      while [ "$column" -le "$terminal_columns" ]; do
+        index=$(((row - 1) * terminal_columns + column))
+        if [ "$index" -gt "$process_count" ]; then
+          index="$process_count"
+        fi
+        process=$(printf '%s\n' "$processes" | sed -n "${index}p")
+        pane_id=$(pane_id_for_process "$process")
+        if [ "$column" -gt 1 ]; then printf ' '; fi
+        printf 'terminal.%s' "$pane_id"
+        column=$((column + 1))
+      done
+      column=1
+      while [ "$column" -le "$terminal_columns" ]; do
+        printf ' browser.app'
+        column=$((column + 1))
+      done
+      printf '"'
+      if [ "$row" -lt "$terminal_rows" ]; then printf ','; fi
+      printf '\n'
+      row=$((row + 1))
+    done
+    printf ']\n'
+  } > "$tmp_file"
+  mv "$tmp_file" "$config_file"
+  echo "Created $config_file from Procfile.dev"
+}
+
+if [ "$COMMAND" = "init" ]; then
+  PROJECT_FILE="$PROJECT_DIR/.project.toml"
+  if [ ! -f "$PROJECT_FILE" ]; then
+    prompt_for_project_file
+  fi
+  project_name=$(project_name_from_file "$PROJECT_FILE")
+  if [ -z "$project_name" ]; then
+    echo "gsde init: could not read project name from $PROJECT_FILE" >&2
+    exit 65
+  fi
+  CONFIG_DIR="$HOME/.config/gsde/$project_name"
+  mkdir -p "$CONFIG_DIR"
+  echo "Created $CONFIG_DIR"
+  if [ -f "$PROJECT_DIR/Procfile.dev" ]; then
+    write_procfile_config "$CONFIG_DIR/config.toml"
+  else
+    echo "gsde init: no Procfile.dev found; skipped config.toml generation"
+  fi
+  exit 0
 fi
 
 SCRIPT_PATH="$0"
