@@ -1,6 +1,6 @@
 cask "gsde" do
-  version "0.1.15"
-  sha256 "d21ee0ec819bf21a4bd1dd0796a60ad7f60eebe1ec0905f92a105fa0c7a0eb2f"
+  version "0.1.16"
+  sha256 "5af815c0740a362a5dcd96d8a8690a6cd7a5f969e76b007500a71eb418499d92"
 
   url "https://github.com/gstark/gsde/releases/download/v#{version}/GSDE-#{version}.zip"
   name "GSDE"
